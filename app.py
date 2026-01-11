@@ -3,124 +3,142 @@ import pandas as pd
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime
 
 # إعداد الصفحة
-st.set_page_config(page_title="Test-1 Lab", layout="wide")
+st.set_page_config(page_title="MOHRE Portal", layout="wide")
 st.title("HAMADA TRACING SITE TEST")
 
-# قائمة الجنسيات
-NATIONS = ["", "Egypt", "India", "Pakistan", "Bangladesh", "Nepal", "Philippines"]
+# قائمة الجنسيات الكاملة
+countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-# --- نافذة الاستعلام عن تفاصيل الشركة (المربع المنبثق) ---
-@st.dialog("Work Permit Inquiry")
-def show_mohre_details(card_no):
-    st.info(f"⏳ Please wait... Fetching details for: {card_no}")
-    driver = None
-    try:
-        options = uc.ChromeOptions()
-        options.add_argument('--headless')
-        driver = uc.Chrome(options=options, use_subprocess=False)
-        
-        # الدخول لصفحة الاستعلامات
-        driver.get("https://inquiry.mohre.gov.ae/")
-        
-        # اختيار الخدمة ووضع رقم البطاقة
-        wait = WebDriverWait(driver, 10)
-        select = wait.until(EC.element_to_be_clickable((By.ID, "ddlService")))
-        select.click()
-        driver.find_element(By.XPATH, "//option[contains(text(), 'Electronic Work Permit Information')]").click()
-        driver.find_element(By.ID, "txtTransactionNo").send_keys(card_no)
-        
-        # الكابتشا
-        captcha_img = driver.find_element(By.ID, "imgCaptcha")
-        st.image(captcha_img.screenshot_as_png, caption="Enter Code")
-        
-        with st.form("inquiry_form"):
-            code = st.text_input("Captcha Code")
-            if st.form_submit_button("Get Details"):
-                driver.find_element(By.ID, "txtCaptcha").send_keys(code)
-                driver.find_element(By.ID, "btnSearch").click()
-                time.sleep(5)
-                
-                # النتائج
-                st.success("✅ Results Found")
-                st.markdown(f"""
-                - **Establishment Name:** {driver.find_element(By.ID, "lblEstNameEn").text}
-                - **Establishment Code:** {driver.find_element(By.ID, "lblEstNo").text}
-                - **Employee Name:** {driver.find_element(By.ID, "lblWorkerNameEn").text}
-                - **Designation:** {driver.find_element(By.ID, "lblWorkerDesignationEn").text}
-                """)
-    except: st.error("Inquiry failed. Please try again.")
-    finally:
-        if driver: driver.quit()
+# --- نظام تسجيل دخول احترافي مع زر دخول صريح ---
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
 
-# --- وظيفة السكرابر الأساسية ---
-def core_scraper(p, n, d):
+if not st.session_state['authenticated']:
+    with st.form("login_form"):
+        st.subheader("Protected Access")
+        pwd_input = st.text_input("Enter Password", type="password")
+        submit_button = st.form_submit_button("Login")
+        
+        if submit_button:
+            if pwd_input == "Bilkish":
+                st.session_state['authenticated'] = True
+                st.rerun()
+            elif pwd_input == "":
+                st.warning("Please enter the password.")
+            else:
+                st.error("Incorrect Password.")
+    st.stop()
+
+# --- دوال الاستخراج ---
+def get_driver():
     options = uc.ChromeOptions()
     options.add_argument('--headless')
-    driver = uc.Chrome(options=options, use_subprocess=False)
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    return uc.Chrome(options=options, headless=True, use_subprocess=False)
+
+def extract_data(passport, nationality, dob_str):
+    driver = get_driver()
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(4)
-        driver.find_element(By.ID, "txtPassportNumber").send_keys(p)
+        time.sleep(5)
+        driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
+        time.sleep(2)
+        search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
+        search_box.send_keys(nationality)
+        time.sleep(2)
+        items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
+        if items: items[0].click()
         time.sleep(1)
-        driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(n)
-        time.sleep(1)
-        driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")[0].click()
-        driver.execute_script(f"arguments[0].value = '{d}';", driver.find_element(By.ID, "txtBirthDate"))
+        dob_input = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_input)
+        dob_input.clear()
+        dob_input.send_keys(dob_str)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_input)
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(7)
-        
-        def g(l):
-            try: return driver.find_element(By.XPATH, f"//*[contains(text(), '{l}')]/following::span[1]").text.strip()
-            except: return "N/A"
+        time.sleep(10)
 
-        return {"Passport": p, "Card Number": g("Card Number"), "Job": g("Job Description"), "Basic": g("Basic Salary"), "Total": g("Total Salary")}
+        def get_value(label):
+            try:
+                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
+                val = driver.find_element(By.XPATH, xpath).text.strip()
+                return val if val else 'Not Found'
+            except: return 'Not Found'
+
+        return {
+            "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
+            "Job Description": get_value("Job Description"),
+            "Card Number": get_value("Card Number"), "Card Issue": get_value("Card Issue"),
+            "Card Expiry": get_value("Card Expiry"), 
+            "Basic Salary": get_value("Basic Salary"), "Total Salary": get_value("Total Salary"),
+        }
     except: return None
     finally: driver.quit()
 
-# --- الواجهة ---
-t1, t2 = st.tabs(["Single Person Search", "Batch Preview"])
+# --- واجهة المستخدم ---
+tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
 
-with t1:
+with tab1:
     st.subheader("Single Person Search")
-    c1, c2, c3 = st.columns(3)
-    p_in = c1.text_input("Passport Number", value="")
-    n_in = c2.selectbox("Nationality", NATIONS, index=0)
-    d_in = c3.text_input("Date of Birth (DD/MM/YYYY)", placeholder="e.g. 12/01/1982") # حل مشكلة السنين
+    col1, col2, col3 = st.columns(3)
+    with col1: passport = st.text_input("Passport Number", value="", key="p_one")
+    with col2: nationality = st.selectbox("Nationality", countries_list, index=0, key="n_one")
+    with col3: dob = st.date_input("Date of Birth", value=None, min_value=datetime(1900, 1, 1), max_value=datetime.now(), key="d_one")
+    
+    if st.button("Search Now", key="btn_one"):
+        if passport and nationality != "Select Nationality" and dob:
+            start_time = time.time()
+            with st.spinner("Processing..."):
+                result = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
+                if result:
+                    st.success(f"Success! Time: {round(time.time() - start_time, 2)}s")
+                    st.table(pd.DataFrame([result]))
+                else: st.error("Not Found.")
 
-    if st.button("Start Search"):
-        st.session_state.start = time.time()
-        with st.spinner("Searching..."):
-            res = core_scraper(p_in, n_in, d_in)
-            if res:
-                # العداد والوقت
-                st.success(f"✅ Success: 1 | ⏱️ Live Timer: {round(time.time() - st.session_state.start, 2)}s")
-                st.table(pd.DataFrame([res]))
-                
-                if res["Card Number"] != "N/A":
-                    # الربط ببحث الشركة
-                    if st.button(f"🔍 Click to fetch Company Info for: {res['Card Number']}"):
-                        show_mohre_details(res["Card Number"])
-            else: st.error("No records found.")
-
-with t2:
-    st.subheader("Batch Processing & Preview")
-    up = st.file_uploader("Upload Excel File", type=["xlsx"])
-    if up:
-        df_view = pd.read_excel(up)
-        st.write("### File Preview")
-        st.dataframe(df_view, use_container_width=True) # المعاينة
+with tab2:
+    st.subheader("Batch Search")
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    
+    if uploaded_file:
+        df_full = pd.read_excel(uploaded_file)
         
-        # زر البحث المفقود عاد
-        if st.button("🚀 Start Batch Processing"):
+        # --- إضافة ميزة عرض الملف المرفوع بصفحات (10 أسماء لكل صفحة) ---
+        st.info(f"File uploaded successfully! Total records found: {len(df_full)}")
+        st.markdown("### Preview of Uploaded Data")
+        # استخدام خاصية dataframe المدمجة التي تدعم التقسيم لصفحات تلقائياً بـ 10 أسطر
+        st.dataframe(df_full, use_container_width=True, height=400) 
+        
+        if st.button("Start Batch Processing", key="btn_batch_start"):
             results = []
-            bar = st.progress(0)
-            for i, row in df_view.iterrows():
-                # (منطق البحث للمجموعة يوضع هنا)
-                bar.progress((i + 1) / len(df_view))
-    else:
-        st.info("Please upload a file to view and process data.")
+            success_count = 0
+            start_batch_time = time.time()
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stats_area = st.empty() 
+            
+            for i, row in df_full.iterrows():
+                p_num = str(row.get('Passport Number', '')).strip()
+                nat = str(row.get('Nationality', 'Egypt')).strip()
+                try: d_birth = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
+                except: d_birth = str(row.get('Date of Birth', ''))
+
+                status_text.text(f"Processing {i+1}/{len(df_full)}: {p_num}")
+                res = extract_data(p_num, nat, d_birth)
+                
+                if res:
+                    results.append(res)
+                    success_count += 1 
+                
+                elapsed = round(time.time() - start_batch_time, 1)
+                stats_area.markdown(f"✅ **Success:** {success_count} | ⏱️ **Live Timer:** {elapsed}s")
+                progress_bar.progress((i + 1) / len(df_full))
+            
+            if results:
+                st.success(f"Finished! Total: {success_count} in {round(time.time() - start_batch_time, 2)}s")
+                st.table(pd.DataFrame(results))
+                st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "results.csv")
