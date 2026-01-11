@@ -4,40 +4,27 @@ import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from datetime import datetime
-from deep_translator import GoogleTranslator # مكتبة للترجمة التلقائية الفورية
+from deep_translator import GoogleTranslator  # مكتبة للترجمة التلقائية الفورية
 
 # إعداد الصفحة
-st.set_page_config(page_title="MOHRE Portal - Auto Translate", layout="wide")
+st.set_page_config(page_title="MOHRE Portal - Auto Search", layout="wide")
 st.title("HAMADA TRACING SITE TEST")
 
-# --- قائمة الجنسيات الكاملة ---
+# --- قائمة الجنسيات الكاملة (بدون اختصارات) ---
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-# دالة الترجمة التلقائية
-def auto_translate(text):
+# --- دالة الترجمة التلقائية (API) ---
+def translate_job(text):
     try:
-        if text and any("\u0600" <= c <= "\u06FF" for c in text): # التأكد أن النص يحتوي على حروف عربية
+        # فحص إذا كان النص يحتوي على لغة عربية
+        if any("\u0600" <= c <= "\u06FF" for c in text):
             return GoogleTranslator(source='ar', target='en').translate(text)
         return text
     except:
         return text
 
-# --- نظام تسجيل الدخول ---
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-
-if not st.session_state['authenticated']:
-    with st.container():
-        pwd = st.text_input("Enter Password", type="password")
-        if st.button("Login"):
-            if pwd == "Bilkish":
-                st.session_state['authenticated'] = True
-                st.rerun()
-            else: st.error("Incorrect Password.")
-    st.stop()
-
-# --- دالة البحث والاستخراج ---
-def run_mohre_scraping(passport, nationality, dob_str):
+# --- محرك البحث السيلينيوم الأصلي ---
+def scrap_mohre(passport, nationality, dob_str):
     options = uc.ChromeOptions()
     options.add_argument('--headless')
     driver = uc.Chrome(options=options, use_subprocess=False)
@@ -45,13 +32,14 @@ def run_mohre_scraping(passport, nationality, dob_str):
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         time.sleep(4)
         
-        # إدخال البيانات
         driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(2)
+        time.sleep(1.5)
+        
         search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
         search_box.send_keys(nationality)
         time.sleep(2)
+        
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
         
@@ -64,82 +52,94 @@ def run_mohre_scraping(passport, nationality, dob_str):
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(8)
 
-        def get_v(label):
+        def get_field(label):
             try:
                 xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else 'Not Found'
             except: return 'Not Found'
 
-        job_ar = get_v("Job Description")
+        job_raw = get_field("Job Description")
         
         return {
-            "Passport Number": passport,
+            "Passport": passport,
             "Nationality": nationality,
-            "Date of Birth": dob_str,
-            "Job Description": auto_translate(job_ar), # ترجمة تلقائية فورية لأي مسمى
-            "Card Number": get_v("Card Number"),
-            "Card Issue": get_v("Card Issue"),
-            "Card Expiry": get_v("Card Expiry"),
-            "Basic Salary": get_v("Basic Salary"),
-            "Total Salary": get_v("Total Salary")
+            "DOB": dob_str,
+            "Job Description": translate_job(job_raw), # ترجمة تلقائية فورية
+            "Card Number": get_field("Card Number"),
+            "Basic Salary": get_field("Basic Salary"),
+            "Total Salary": get_field("Total Salary")
         }
     except: return None
     finally: driver.quit()
 
-# --- واجهة المستخدم ---
-t1, t2 = st.tabs(["Single Search", "Batch Search"])
+# --- واجهة المستخدم وفصل التبويبات ---
+tab1, tab2 = st.tabs(["Single Search", "Batch Processing (Excel)"])
 
-with t1:
+with tab1:
     st.subheader("Single Person Search")
-    col1, col2, col3 = st.columns(3)
-    p_in = col1.text_input("Passport Number", key="p_s")
-    n_in = col2.selectbox("Nationality", countries_list, key="n_s")
-    d_in = col3.text_input("Date of Birth (DD/MM/YYYY)", key="d_s")
+    c1, c2, c3 = st.columns(3)
+    p_in = c1.text_input("Passport Number", placeholder="Type here...", key="s_p")
+    n_in = c2.selectbox("Nationality", countries_list, key="s_n")
+    d_in = c3.text_input("Date of Birth", placeholder="DD/MM/YYYY", key="s_d")
 
-    if st.button("Search Now"):
+    if st.button("Search Person"):
         if p_in and d_in:
             start_t = time.time()
-            prog = st.progress(0)
-            status = st.empty()
-            with st.spinner("Searching..."):
-                prog.progress(50)
-                res = run_mohre_scraping(p_in, n_in, d_in)
-                prog.progress(100)
+            # شريط بروسيس وعداد لحظي
+            prog_bar = st.progress(0)
+            status_txt = st.empty()
+            
+            with st.spinner("Connecting to MOHRE..."):
+                prog_bar.progress(40)
+                res = scrap_mohre(p_in, n_in, d_in)
+                prog_bar.progress(100)
+                
                 if res:
                     elapsed = round(time.time() - start_t, 2)
-                    status.success(f"✅ Success: 1 | ⏱️ Timer: {elapsed}s")
+                    status_txt.success(f"✅ Success: 1 | ⏱️ Live Timer: {elapsed}s")
                     st.dataframe(pd.DataFrame([res]), use_container_width=True)
-                else: status.error("❌ No results found.")
+                else:
+                    status_txt.error("❌ No results found in the database for this record.")
 
-with t2:
-    st.subheader("Batch Search (Excel)")
-    up = st.file_uploader("Upload Excel File", type=["xlsx"])
-    if up:
-        df_in = pd.read_excel(up)
-        st.dataframe(df_in, use_container_width=True)
-        if st.button("🚀 Start Batch Search"):
-            final_results = []
-            success_count = 0
-            start_batch = time.time()
-            prog_b = st.progress(0)
-            stats_b = st.empty()
-            table_b = st.empty()
-            total = len(df_in)
+with tab2:
+    st.subheader("Batch Excel Processing")
+    file_up = st.file_uploader("Upload XLSX File", type=["xlsx"])
+    if file_up:
+        df_raw = pd.read_excel(file_up)
+        st.dataframe(df_raw.head(), use_container_width=True)
+        
+        if st.button("🚀 Start Global Search"):
+            final_list = []
+            count = 0
+            start_b = time.time()
             
-            for i, row in df_in.iterrows():
-                data = run_mohre_scraping(str(row[0]), str(row[1]), str(row[2]))
-                if data:
-                    final_results.append(data)
-                    success_count += 1
+            # العدادات اللحظية وشريط التقدم
+            p_bar = st.progress(0)
+            s_msg = st.empty()
+            t_area = st.empty()
+            
+            total = len(df_raw)
+            for i, row in df_raw.iterrows():
+                # تشغيل السكرابر
+                data = scrap_mohre(str(row[0]), str(row[1]), str(row[2]))
                 
-                elapsed_b = round(time.time() - start_batch, 1)
-                prog_b.progress((i + 1) / total)
-                stats_b.markdown(f"### ✅ Found: {success_count} / {total} | ⏱️ Timer: {elapsed_b}s")
-                if final_results:
-                    table_b.dataframe(pd.DataFrame(final_results), use_container_width=True)
+                if data:
+                    final_list.append(data)
+                    count += 1
+                
+                # تحديث الـ Live UI
+                elapsed_b = round(time.time() - start_b, 1)
+                p_bar.progress((i + 1) / total)
+                s_msg.markdown(f"### ✅ Found: {count} / {total} | ⏱️ Timer: {elapsed_b}s")
+                
+                if final_list:
+                    t_area.dataframe(pd.DataFrame(final_list), use_container_width=True)
 
-            if final_results:
-                st.success(f"Batch Completed! {success_count} records extracted.")
-                st.download_button("📥 Download Results (CSV)", pd.DataFrame(final_results).to_csv(index=False).encode('utf-8'), "mohre_results.csv")
-            else: st.error("❌ No results found for the file records.")
+            if final_list:
+                st.success(f"Processing Complete! Found {count} results.")
+                # زر التحميل النهائي
+                csv_data = pd.DataFrame(final_list).to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Results (CSV)", csv_data, "MOHRE_Results.csv", "text/csv")
+            else:
+                st.error("❌ Process finished, but no matching records were found.")
