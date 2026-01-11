@@ -116,7 +116,10 @@ with tab2:
     if up_file:
         df_preview = pd.read_excel(up_file)
         st.write(f"📊 **Total records in file:** {len(df_preview)}")
-        st.dataframe(df_preview, use_container_width=True)
+        # إضافة عمود الرقم التسلسلي يبدأ من 1 للمعاينة فقط
+        df_show = df_preview.copy()
+        df_show.index = range(1, len(df_show) + 1)
+        st.dataframe(df_show, use_container_width=True)
         
         if st.button("Start Search", key="run_b"):
             results = []
@@ -131,13 +134,16 @@ with tab2:
             for i, row in df_preview.iterrows():
                 data = perform_scraping(str(row[0]), str(row[1]), str(row[2]))
                 if data:
-                    results.append(data)
                     found_count += 1
+                    # إضافة التسلسل للنتيجة يبدأ من 1
+                    data_with_index = {"#": found_count}
+                    data_with_index.update(data)
+                    results.append(data_with_index)
                 
-                # تحديث العداد والوقت حياً
+                # تحديث العداد (i+1) ليبدأ من 1 والوقت حياً
                 elapsed_batch = round(time.time() - start_batch, 1)
                 pb.progress((i + 1) / total)
-                status_text.markdown(f"### 🔍 Status: Found {found_count} / {total} | ⏱️ Timer: {elapsed_batch}s")
+                status_text.markdown(f"### 🔍 Searching: Record {i+1} of {total} | ✅ Found: {found_count} | ⏱️ Timer: {elapsed_batch}s")
                 
                 if results:
                     table_placeholder.dataframe(pd.DataFrame(results), use_container_width=True)
