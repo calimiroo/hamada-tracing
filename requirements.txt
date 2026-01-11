@@ -4,3 +4,4 @@ selenium
 undetected-chromedriver
 setuptools
 openpyxl
+deep-translator
