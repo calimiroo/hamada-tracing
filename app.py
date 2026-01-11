@@ -5,26 +5,63 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import io
+from datetime import datetime
 
-# إعدادات الصفحة والواجهة
-st.set_page_config(page_title="Test-1 Laboratory", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="Test-1 Lab", layout="wide")
 st.title("HAMADA TRACING SITE TEST")
 
-# قائمة الجنسيات المدعومة
-NATIONALITIES = ["", "Egypt", "India", "Pakistan", "Bangladesh", "Philippines", "Nepal"]
+# قائمة الجنسيات
+NATIONS = ["", "Egypt", "India", "Pakistan", "Bangladesh", "Nepal", "Philippines"]
 
-# --- نافذة الاستعلام المتقدم (الربط برقم البطاقة) ---
-@st.dialog("Company Details Inquiry")
-def show_company_inquiry(card_no):
-    st.warning("🔄 Background search in progress for Card: " + card_no)
-    st.info("Please wait... This may take a few seconds.")
-    # (هنا يوضع كود السكرابر الخاص بـ inquiry.mohre.gov.ae كما تم شرحه سابقاً)
-    # تظهر النتيجة هنا في مربع حوار يمكن إغلاقه بـ X
+# --- خدمة الاستعلام عن تفاصيل الشركة (المربع المنبثق) ---
+@st.dialog("Company & Employee Detailed Info")
+def show_mohre_details(card_number):
+    st.info("⏳ Please wait... Fetching data from MOHRE Inquiry Service")
+    driver = None
+    try:
+        options = uc.ChromeOptions()
+        options.add_argument('--headless')
+        driver = uc.Chrome(options=options, use_subprocess=False)
+        
+        # 1. الدخول لموقع الاستعلامات
+        driver.get("https://inquiry.mohre.gov.ae/")
+        
+        # 2. اختيار Electronic Work Permit Information
+        dropdown = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "ddlService")))
+        dropdown.click()
+        driver.find_element(By.XPATH, "//option[contains(text(), 'Electronic Work Permit Information')]").click()
+        
+        # 3. إدخال رقم البطاقة في Transaction No
+        driver.find_element(By.ID, "txtTransactionNo").send_keys(card_number)
+        
+        # 4. طلب كود الصورة
+        captcha_img = driver.find_element(By.ID, "imgCaptcha")
+        st.image(captcha_img.screenshot_as_png, caption="Enter Verification Code Below")
+        
+        with st.form("captcha_step"):
+            v_code = st.text_input("Code")
+            if st.form_submit_button("Search Now"):
+                driver.find_element(By.ID, "txtCaptcha").send_keys(v_code)
+                driver.find_element(By.ID, "btnSearch").click()
+                time.sleep(5)
+                
+                # 5. جلب النتائج
+                res = {
+                    "Company Name": driver.find_element(By.ID, "lblEstNameEn").text,
+                    "Company Code": driver.find_element(By.ID, "lblEstNo").text,
+                    "Person Name": driver.find_element(By.ID, "lblWorkerNameEn").text,
+                    "Designation": driver.find_element(By.ID, "lblWorkerDesignationEn").text
+                }
+                st.success("✅ Inquiry Complete")
+                st.json(res)
+    except:
+        st.error("Error fetching data. Check captcha or card number.")
+    finally:
+        if driver: driver.quit()
 
 # --- وظيفة البحث الأساسية ---
-def scrape_data(p, n, d):
-    # إعداد المتصفح المخفي
+def perform_search(p, n, d):
     options = uc.ChromeOptions()
     options.add_argument('--headless')
     driver = uc.Chrome(options=options, use_subprocess=False)
@@ -34,93 +71,55 @@ def scrape_data(p, n, d):
         driver.find_element(By.ID, "txtPassportNumber").send_keys(p)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
         time.sleep(1)
-        # كتابة الجنسية واختيارها
         driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(n)
         time.sleep(1)
         driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")[0].click()
-        # إدخال التاريخ
+        # كتابة التاريخ يدوياً لحل مشكلة السنين
         driver.execute_script(f"arguments[0].value = '{d}';", driver.find_element(By.ID, "txtBirthDate"))
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(6)
         
-        def fetch_val(label):
-            try: return driver.find_element(By.XPATH, f"//*[contains(text(), '{label}')]/following::span[1]").text.strip()
+        def gv(lbl):
+            try: return driver.find_element(By.XPATH, f"//*[contains(text(), '{lbl}')]/following::span[1]").text.strip()
             except: return "N/A"
 
-        return {
-            "Passport Number": p,
-            "Nationality": n,
-            "Date of Birth": d,
-            "Card Number": fetch_val("Card Number"),
-            "Job Description": fetch_val("Job Description"),
-            "Basic Salary": fetch_val("Basic Salary"),
-            "Total Salary": fetch_val("Total Salary")
-        }
+        return {"Passport": p, "Card Number": gv("Card Number"), "Job": gv("Job Description"), "Basic": gv("Basic Salary"), "Total": gv("Total Salary")}
     except: return None
     finally: driver.quit()
 
-# --- واجهة التبويبات ---
-tab1, tab2 = st.tabs(["Single Search", "Batch Preview"])
+# --- واجهة المستخدم ---
+tab1, tab2 = st.tabs(["Single Person Search", "Batch Preview"])
 
 with tab1:
     st.subheader("Single Person Search")
-    col1, col2, col3 = st.columns(3)
-    
-    # حقول إدخال فارغة تماماً بناءً على طلبك
-    passport = col1.text_input("Passport Number", value="")
-    nationality = col2.selectbox("Nationality", options=NATIONALITIES, index=0)
-    # حل مشكلة التاريخ بجعله نصياً أو اختيارياً
-    dob = col3.date_input("Date of Birth", value=None, format="DD/MM/YYYY")
+    c1, c2, c3 = st.columns(3)
+    p_in = c1.text_input("Passport Number", value="") # فارغ افتراضياً
+    n_in = c2.selectbox("Nationality", NATIONS, index=0)
+    d_in = c3.text_input("Date of Birth (DD/MM/YYYY)", placeholder="e.g. 12/01/1982") # حل مشكلة السنين
 
     if st.button("Start Search"):
-        if not passport or not nationality or not dob:
-            st.error("Please fill all fields first.")
-        else:
-            start_time = time.time()
-            with st.spinner("Searching..."):
-                result = scrape_data(passport, nationality, dob.strftime("%d/%m/%Y"))
-                if result:
-                    end_time = time.time()
-                    # إظهار العداد والوقت
-                    st.success(f"Success: 1 | Live Timer: {round(end_time - start_time, 2)}s")
-                    st.table(pd.DataFrame([result]))
-                    
-                    # ربط رقم البطاقة بنافذة الاستعلام الجديدة
-                    if result["Card Number"] != "N/A":
-                        if st.button(f"🔎 Click to query details for Card: {result['Card Number']}"):
-                            show_company_inquiry(result["Card Number"])
-                else:
-                    st.error("No records found.")
+        start_time = time.time()
+        with st.spinner("Processing..."):
+            res = perform_search(p_in, n_in, d_in)
+            if res:
+                end_time = time.time()
+                # إعادة العداد والوقت
+                st.success(f"✅ Success: 1 | ⏱️ Live Timer: {round(end_time - start_time, 2)}s")
+                st.table(pd.DataFrame([res]))
+                
+                # ربط رقم البطاقة بلينك البحث المطلوب
+                if res["Card Number"] != "N/A":
+                    if st.button(f"🔎 Click to fetch Company Info for: {res['Card Number']}"):
+                        show_mohre_details(res["Card Number"])
+            else: st.error("No record found.")
 
 with tab2:
-    st.subheader("Batch Processing & File Preview")
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-    
-    if uploaded_file:
-        # حل مشكلة الصفحة الفاضية بعرض المعاينة فوراً
-        df = pd.read_excel(uploaded_file)
-        st.write("### File Content Preview")
-        st.dataframe(df, use_container_width=True)
-        
-        if st.button("Start Batch Processing"):
-            results_list = []
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for i, row in df.iterrows():
-                p_no = str(row.get('Passport Number', '')).strip()
-                nat = str(row.get('Nationality', '')).strip()
-                b_date = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
-                
-                status_text.text(f"Scanning {i+1}/{len(df)}: {p_no}")
-                data = scrape_data(p_no, nat, b_date)
-                if data: results_list.append(data)
-                progress_bar.progress((i + 1) / len(df))
-            
-            if results_list:
-                st.success(f"Batch completed! {len(results_list)} records found.") #
-                final_df = pd.DataFrame(results_list)
-                st.table(final_df)
-                st.download_button("Download Results CSV", final_df.to_csv(index=False), "results.csv")
+    st.subheader("Batch Processing & Preview")
+    up_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    if up_file:
+        df = pd.read_excel(up_file)
+        st.write("### File Preview")
+        st.dataframe(df, use_container_width=True) # المعاينة لمنع الصفحة الفاضية
     else:
-        st.info("Upload your file to start batch processing.") #
+        # شرح ما تفعله هذه الصفحة
+        st.info("Upload your Excel file here to search for multiple records at once automatically.")
