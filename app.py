@@ -11,8 +11,19 @@ try:
 except ImportError:
     HAS_TRANSLATOR = False
 
-# إعداد الصفحة
+# إعداد الصفحة وإخفاء شريط الأدوات العلوي (Share, GitHub, etc.)
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
+
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stAppDeployButton {display:none;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 st.title("HAMADA TRACING SITE TEST")
 
 # --- نظام تسجيل الدخول ---
@@ -99,7 +110,6 @@ with tab1:
                 elapsed = round(time.time() - start_single, 2)
                 if res:
                     st.success(f"✅ Success! | ⏱️ Time: {elapsed}s")
-                    # عرض الجدول بدون عمود الـ Index الافتراضي
                     st.table(pd.DataFrame([res]))
                 else: st.error(f"❌ No data found. | ⏱️ Time: {elapsed}s")
 
@@ -111,7 +121,6 @@ with tab2:
     
     if up_file:
         df_preview = pd.read_excel(up_file)
-        # إزالة العمود الصفري في المعاينة
         df_show = df_preview.copy()
         df_show.index = range(1, len(df_show) + 1)
         st.write(f"📊 **Total records:** {len(df_preview)}")
@@ -130,7 +139,6 @@ with tab2:
                 data = perform_scraping(str(row[0]), str(row[1]), str(row[2]))
                 if data:
                     found_count += 1
-                    # بناء السطر مع جعل التسلسل هو الرقم الأول
                     data_row = {"#": found_count}
                     data_row.update(data)
                     results.append(data_row)
@@ -140,7 +148,6 @@ with tab2:
                 status_text.markdown(f"### 🔍 Searching: {i+1}/{len(df_preview)} | ✅ Found: {found_count} | ⏱️ Timer: {elapsed}s")
                 
                 if results:
-                    # عرض الجدول وإخفاء عمود الـ index الافتراضي تماماً
                     df_res = pd.DataFrame(results)
                     table_placeholder.dataframe(df_res, use_container_width=True, hide_index=True)
 
