@@ -1,7 +1,5 @@
-streamlit
-pandas
-selenium
-undetected-chromedriver
-setuptools
-openpyxl
 deep-translator
+undetected-chromedriver
+selenium
+pandas
+openpyxl
