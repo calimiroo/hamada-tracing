@@ -11,7 +11,7 @@ try:
 except ImportError:
     HAS_TRANSLATOR = False
 
-# إعداد الصفحة وإخفاء شريط الأدوات العلوي (Share, GitHub, etc.)
+# إعداد الصفحة وإخفاء شريط الأدوات العلوي
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
 
 hide_st_style = """
@@ -74,18 +74,25 @@ def perform_scraping(passport, nationality, dob):
 
         def get_v(label):
             try:
+                # محاولة البحث عن النص في الـ span أو الـ div المجاور للعنوان
                 xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
                 v = driver.find_element(By.XPATH, xpath).text.strip()
-                return v if v else None
-            except: return None
+                return v if v else "Not Found"
+            except: return "Not Found"
 
         job = get_v("Job Description")
-        if not job: return None
+        if job == "Not Found": return None
 
         return {
-            "Passport": passport, "Nationality": nationality, "DOB": dob,
+            "Passport": passport, 
+            "Nationality": nationality, 
+            "DOB": dob,
             "Job Description": safe_translate(job),
-            "Card Number": get_v("Card Number"), "Basic Salary": get_v("Basic Salary"), "Total Salary": get_v("Total Salary")
+            "Card Number": get_v("Card Number"),
+            "Contract Start": get_v("Contract Start Date"), # تم تعديل التسمية لتطابق الموقع
+            "Contract End": get_v("Contract Expiry Date"),  # تم تعديل التسمية لتطابق الموقع
+            "Basic Salary": get_v("Basic Salary"), 
+            "Total Salary": get_v("Total Salary")
         }
     except: return None
     finally: driver.quit()
