@@ -7,12 +7,15 @@ from datetime import datetime
 
 # إعداد الصفحة
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
-st.title("HAMADA TRACING SITE TEST")
 
-# قائمة الجنسيات الكاملة
+# --- ميزة تسجيل الخروج (Sign Out) ---
+def logout():
+    st.session_state['authenticated'] = False
+    st.rerun()
+
+# قائمة الجنسيات الكاملة (محفوظة بالكامل)
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-# --- نظام تسجيل دخول احترافي مع زر دخول صريح ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 
@@ -23,14 +26,16 @@ if not st.session_state['authenticated']:
         submit_button = st.form_submit_button("Login")
         
         if submit_button:
-            if pwd_input == "Bilkish":
+            if pwd_input == "Bilkish": # كلمة المرور الموجودة في ملفك الأصلي
                 st.session_state['authenticated'] = True
                 st.rerun()
-            elif pwd_input == "":
-                st.warning("Please enter the password.")
             else:
                 st.error("Incorrect Password.")
     st.stop()
+
+# إظهار زر تسجيل الخروج في الشريط الجانبي (Side Bar)
+st.sidebar.button("🔴 Sign Out", on_click=logout)
+st.title("HAMADA TRACING SITE TEST")
 
 # --- دوال الاستخراج ---
 def get_driver():
@@ -85,18 +90,20 @@ tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
 with tab1:
     st.subheader("Single Person Search")
     col1, col2, col3 = st.columns(3)
-    with col1: passport = st.text_input("Passport Number", value="", key="p_one")
-    with col2: nationality = st.selectbox("Nationality", countries_list, index=0, key="n_one")
-    with col3: dob = st.date_input("Date of Birth", value=None, min_value=datetime(1900, 1, 1), max_value=datetime.now(), key="d_one")
+    with col1: passport = st.text_input("Passport Number", key="p_one")
+    with col2: nationality = st.selectbox("Nationality", countries_list, key="n_one")
+    # تاريخ الميلاد يظل كاليندر لسهولة الاستخدام، ويتم تحويله خلف الكواليس لـ dd/mm/yyyy
+    with col3: dob = st.date_input("Date of Birth (dd/mm/yyyy)", value=None, min_value=datetime(1900, 1, 1), max_value=datetime.now(), key="d_one")
     
     if st.button("Search Now", key="btn_one"):
         if passport and nationality != "Select Nationality" and dob:
             start_time = time.time()
             with st.spinner("Processing..."):
-                result = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
-                if result:
+                # تحويل اختيار التقويم لصيغة dd/mm/yyyy يدوي للبحث
+                res = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
+                if res:
                     st.success(f"Success! Time: {round(time.time() - start_time, 2)}s")
-                    st.table(pd.DataFrame([result]))
+                    st.table(pd.DataFrame([res]))
                 else: st.error("Not Found.")
 
 with tab2:
@@ -105,18 +112,13 @@ with tab2:
     
     if uploaded_file:
         df_full = pd.read_excel(uploaded_file)
-        
-        # --- إضافة ميزة عرض الملف المرفوع بصفحات (10 أسماء لكل صفحة) ---
-        st.info(f"File uploaded successfully! Total records found: {len(df_full)}")
-        st.markdown("### Preview of Uploaded Data")
-        # استخدام خاصية dataframe المدمجة التي تدعم التقسيم لصفحات تلقائياً بـ 10 أسطر
-        st.dataframe(df_full, use_container_width=True, height=400) 
+        st.info(f"Total records: {len(df_full)}")
+        st.dataframe(df_full, use_container_width=True, height=300) 
         
         if st.button("Start Batch Processing", key="btn_batch_start"):
             results = []
             success_count = 0
             start_batch_time = time.time()
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             stats_area = st.empty() 
@@ -124,8 +126,13 @@ with tab2:
             for i, row in df_full.iterrows():
                 p_num = str(row.get('Passport Number', '')).strip()
                 nat = str(row.get('Nationality', 'Egypt')).strip()
-                try: d_birth = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
-                except: d_birth = str(row.get('Date of Birth', ''))
+                
+                # منطق مرن لمعالجة تاريخ الميلاد اليدوي من الإكسيل ليكون dd/mm/yyyy
+                raw_dob = row.get('Date of Birth')
+                try:
+                    d_birth = pd.to_datetime(raw_dob).strftime('%d/%m/%Y')
+                except:
+                    d_birth = str(raw_dob).strip() # استخدامه كما هو إذا فشل التحويل التلقائي
 
                 status_text.text(f"Processing {i+1}/{len(df_full)}: {p_num}")
                 res = extract_data(p_num, nat, d_birth)
@@ -139,7 +146,6 @@ with tab2:
                 progress_bar.progress((i + 1) / len(df_full))
             
             if results:
-                st.success(f"Finished! Total: {success_count} in {round(time.time() - start_batch_time, 2)}s")
+                st.success(f"Finished! Total: {success_count}")
                 st.table(pd.DataFrame(results))
                 st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "results.csv")
-
