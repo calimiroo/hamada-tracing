@@ -86,6 +86,7 @@ def perform_scraping(passport, nationality, dob):
 
         def get_v(label_text):
             try:
+                # منطق جلب البيانات المحدث بناءً على صور الموقع التي أرسلتها
                 xpath = f"//*[contains(text(), '{label_text}')]/following-sibling::span | //*[contains(text(), '{label_text}')]/parent::div/following-sibling::div"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else "Not Found"
@@ -111,22 +112,26 @@ tab1, tab2 = st.tabs(["Single Search", "Batch Processing"])
 
 with tab1:
     st.subheader("Single Person Search")
+    if st.button("🗑️ Clear Inputs", key="clr_s"): st.rerun()
     col1, col2, col3 = st.columns(3)
     p_in = col1.text_input("Passport Number", key="ps_1")
     n_in = col2.selectbox("Nationality", countries_list, key="na_1")
     d_in = col3.text_input("Date of Birth (DD/MM/YYYY)", key="db_1")
 
-    if st.button("Start Search"):
+    if st.button("Start Search", key="run_s"):
         if p_in and d_in:
+            start_single = time.time()
             with st.spinner("Searching..."):
                 res = perform_scraping(p_in, n_in, d_in)
+                elapsed = round(time.time() - start_single, 2)
                 if res:
-                    st.success("✅ Success!")
+                    st.success(f"✅ Success! | ⏱️ Time: {elapsed}s")
                     st.table(pd.DataFrame([res]))
-                else: st.error("❌ No data found.")
+                else: st.error(f"❌ No data found. | ⏱️ Time: {elapsed}s")
 
 with tab2:
     st.subheader("Batch Excel Processing")
+    if st.button("🗑️ Reset Batch", key="clr_b"): st.rerun()
     up_file = st.file_uploader("Upload Excel File", type=["xlsx"])
     
     if up_file:
@@ -136,12 +141,11 @@ with tab2:
         st.write(f"📊 **Total records:** {len(df_preview)}")
         st.dataframe(df_show, use_container_width=True)
         
-        # أزرار التحكم في البحث الجماعي
         c1, c2, c3, c4 = st.columns(4)
-        start_btn = c1.button("🚀 Start Search")
-        stop_btn = c2.button("🛑 STOP")
-        pause_btn = c3.button("⏸️ Pause")
-        resume_btn = c4.button("▶️ Resume")
+        start_btn = c1.button("🚀 Start Search", use_container_width=True)
+        stop_btn = c2.button("🛑 STOP", use_container_width=True)
+        pause_btn = c3.button("⏸️ Pause", use_container_width=True)
+        resume_btn = c4.button("▶️ Resume", use_container_width=True)
 
         if stop_btn: st.session_state.stop_process = True
         if pause_btn: st.session_state.is_paused = True
@@ -159,20 +163,17 @@ with tab2:
             table_placeholder = st.empty()
             
             for i, row in df_preview.iterrows():
-                # 1. التحقق من التوقف النهائي
                 if st.session_state.stop_process:
                     st.warning("⚠️ Process Stopped.")
                     break
                 
-                # 2. التحقق من الإيقاف المؤقت
                 while st.session_state.is_paused:
                     status_text.info(f"⏸️ Search Paused at record {i+1}. Waiting for Resume...")
-                    time.sleep(1) # تهدئة المعالج أثناء التوقف
+                    time.sleep(1)
                     if st.session_state.stop_process: break
                 
                 if st.session_state.stop_process: break
 
-                # 3. تنفيذ البحث
                 data = perform_scraping(str(row[0]), str(row[1]), str(row[2]))
                 if data:
                     found_count += 1
@@ -182,12 +183,13 @@ with tab2:
                 
                 elapsed = round(time.time() - start_batch, 1)
                 pb.progress((i + 1) / len(df_preview))
+                # إعادة سطر التوقيت والعداد هنا
                 status_text.markdown(f"### 🔍 Searching: {i+1}/{len(df_preview)} | ✅ Found: {found_count} | ⏱️ Timer: {elapsed}s")
                 
                 if results:
                     table_placeholder.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
 
             if results:
-                st.success("Task finished or partially stopped.")
+                st.success("Task completed.")
                 csv_data = pd.DataFrame(results).to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Results (CSV)", csv_data, "MOHRE_Results.csv")
