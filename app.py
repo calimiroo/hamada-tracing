@@ -5,24 +5,35 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from deep_translator import GoogleTranslator
+from datetime import datetime
 
-# --- Page Config ---
-st.set_page_config(page_title="MOHRE Portal", layout="wide")
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="MOHRE Full System", layout="wide")
 
-# --- Security & Session ---
-if 'auth' not in st.session_state: st.session_state.auth = False
-if 'stop' not in st.session_state: st.session_state.stop = False
+# --- قائمة كاملة لجميع الجنسيات ---
+ALL_NATIONALITIES = [
+    "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", 
+    "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", 
+    "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", 
+    "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", 
+    "Cote d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", 
+    "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", 
+    "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", 
+    "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", 
+    "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea North", "Korea South", "Kuwait", 
+    "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", 
+    "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", 
+    "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", 
+    "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "Norway", "Oman", "Pakistan", "Palau", 
+    "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", 
+    "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Samoa", "San Marino", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", 
+    "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", 
+    "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", 
+    "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", 
+    "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+]
 
-if not st.session_state.auth:
-    st.subheader("Login Required")
-    if st.text_input("Password", type="password") == "Hamada":
-        if st.button("Login"):
-            st.session_state.auth = True
-            st.rerun()
-    st.stop()
-
-# --- Functions ---
-def translate_ar_to_en(text):
+def translate_to_en(text):
     try:
         if any("\u0600" <= c <= "\u06FF" for c in text):
             return GoogleTranslator(source='auto', target='en').translate(text)
@@ -44,8 +55,11 @@ def run_search(passport, nationality, dob):
     driver = get_driver()
     if not driver: return "System Error"
     try:
+        # تحويل التاريخ للصيغة المطلوبة
+        dob_str = dob.strftime("%d/%m/%Y") if isinstance(dob, (datetime, pd.Timestamp)) else str(dob)
+
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(4)
+        time.sleep(3)
         
         driver.find_element(By.ID, "txtPassportNumber").send_keys(str(passport))
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
@@ -55,79 +69,86 @@ def run_search(passport, nationality, dob):
         
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
-        else: return "Nationality Not Found"
+        else: return "Nationality Error"
         
-        dob_f = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_f, str(dob))
+        # حقن التاريخ (مفتوح من 1900)
+        dob_field = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_field, dob_str)
         
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(7)
+        time.sleep(6)
         
-        def gv(lbl):
+        def gv(label):
             try:
-                xpath = f"//*[contains(text(), '{lbl}')]/following-sibling::span"
+                xpath = f"//*[contains(text(), '{label}')]/following-sibling::span"
                 return driver.find_element(By.XPATH, xpath).text.strip()
             except: return "N/A"
 
         job = gv("Job Description")
-        if job == "N/A": return "No Data Found"
+        if job == "N/A" or not job: return "Not Found"
 
         return {
-            "Job": translate_ar_to_en(job),
+            "Job": translate_to_en(job),
             "Card": gv("Card Number"),
             "Start": gv("Contract Start"),
             "End": gv("Contract End"),
-            "Basic": gv("Basic Salary"),
-            "Total": gv("Total Salary")
+            "Salary": gv("Total Salary")
         }
-    except: return "Search Failed"
+    except: return "Format Error"
     finally: driver.quit()
 
-# --- UI ---
-st.title("🛡️ HAMADA TRACING SYSTEM")
-st.sidebar.button("Log Out", on_click=lambda: st.session_state.update({"auth": False}))
+# --- واجهة المستخدم ---
+st.title("🛡️ HAMADA TRACING SYSTEM - GLOBAL VERSION")
 
-tab1, tab2 = st.tabs(["🔍 Single Search", "📁 Batch Processing"])
+tab1, tab2 = st.tabs(["🔍 البحث الفردي", "📁 ملف الإكسيل"])
 
 with tab1:
-    c1, c2, c3 = st.columns(3)
-    p = c1.text_input("Passport")
-    n = c2.text_input("Nationality") # يمكنك استبدالها بـ Selectbox لاحقاً
-    d = c3.text_input("DOB (DD/MM/YYYY)")
-    if st.button("Start Search"):
-        with st.spinner("Processing..."):
-            res = run_search(p, n, d)
+    col1, col2, col3 = st.columns(3)
+    p_num = col1.text_input("رقم الجواز")
+    # قائمة الجنسيات كاملة
+    nat = col2.selectbox("اختر الجنسية", ALL_NATIONALITIES)
+    # التقويم يبدأ من 1900
+    dob_input = col3.date_input("تاريخ الميلاد", 
+                               min_value=datetime(1900, 1, 1), 
+                               max_value=datetime.today(),
+                               value=datetime(1990, 1, 1))
+    
+    if st.button("بحث الآن"):
+        with st.spinner("جاري جلب البيانات..."):
+            res = run_search(p_num, nat, dob_input)
             if isinstance(res, dict): st.table(pd.DataFrame([res]))
             else: st.error(res)
 
 with tab2:
-    f = st.file_uploader("Upload Excel", type=["xlsx"])
-    if f:
-        df = pd.read_excel(f)
-        if st.button("🚀 Start Batch"):
-            st.session_state.stop = False
+    up_file = st.file_uploader("ارفع الملف", type=["xlsx"])
+    if up_file:
+        df = pd.read_excel(up_file)
+        st.write("📊 معاينة الملف المرفوع:")
+        st.dataframe(df)
+        
+        if st.button("🚀 معالجة الكل"):
             results = []
             m1, m2, m3 = st.columns(3)
-            timer_p, count_p, success_p = m1.empty(), m2.empty(), m3.empty()
+            timer_d, count_d, success_d = m1.empty(), m2.empty(), m3.empty()
             pb = st.progress(0)
-            table_spot = st.empty()
-            start_time = time.time()
-            success_count = 0
+            table_d = st.empty()
+            start_t = time.time()
+            success_c = 0
 
             for i, row in df.iterrows():
-                if st.session_state.stop: break
-                timer_p.metric("⏳ Timer", f"{round(time.time()-start_time, 1)}s")
-                count_p.metric("📊 Records", f"{i+1}/{len(df)}")
-                success_p.metric("✅ Success", success_count)
+                timer_d.metric("⏳ الوقت", f"{round(time.time()-start_t, 1)}s")
+                count_d.metric("📊 سجل رقم", f"{i+1}/{len(df)}")
+                success_d.metric("✅ نجاح", success_c)
                 
-                data = run_search(row[0], row[1], row[2])
-                entry = {"Passport": row[0], "Status": "Success" if isinstance(data, dict) else data}
+                # ترتيب الأعمدة: اسم، جواز، جنسية، تاريخ
+                data = run_search(row[1], row[2], row[3])
+                entry = {"الاسم": row[0], "الجواز": row[1], "الحالة": "Success" if isinstance(data, dict) else data}
                 if isinstance(data, dict):
                     entry.update(data)
-                    success_count += 1
+                    success_c += 1
                 results.append(entry)
+                table_d.dataframe(pd.DataFrame(results))
                 pb.progress((i+1)/len(df))
-                table_spot.dataframe(pd.DataFrame(results))
-            
-            st.success("Batch Completed!")
-            st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "Results.csv")
+
+            st.success("اكتملت المعالجة")
+            st.download_button("تحميل النتيجة", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "Results.csv")
