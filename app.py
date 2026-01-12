@@ -4,33 +4,32 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# --- إعدادات الصفحة ---
+# --- Page Configuration ---
 st.set_page_config(page_title="MOHRE Tracing System", layout="wide")
 
-# --- إدارة الجلسة (Session State) ---
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'stop' not in st.session_state: st.session_state.stop = False
 
-# --- وظيفة تسجيل الخروج (بديلة لـ Share) ---
 def sign_out():
     st.session_state.authenticated = False
     st.rerun()
 
-# --- نظام الدخول ---
+# --- Login System ---
 if not st.session_state.authenticated:
-    st.subheader("🔑 نظام الدخول")
-    pwd = st.text_input("كلمة المرور", type="password")
-    if st.button("دخول"):
+    st.subheader("🔑 Login System")
+    pwd = st.text_input("Enter Password", type="password")
+    if st.button("Login"):
         if pwd == "Hamada":
             st.session_state.authenticated = True
             st.rerun()
     st.stop()
 else:
-    # زر تسجيل الخروج في أعلى الصفحة بدلاً من Share
-    st.sidebar.button("🔴 Sign Out / خروج", on_click=sign_out)
+    st.sidebar.button("🔴 Sign Out", on_click=sign_out)
 
-# --- محرك البحث السحابي ---
+# --- Enhanced Search Engine ---
 def get_driver():
     options = Options()
     options.add_argument("--headless=new")
@@ -39,119 +38,144 @@ def get_driver():
     try:
         return webdriver.Chrome(options=options)
     except Exception as e:
-        st.error(f"خطأ في المحرك: {e}")
+        st.error(f"Driver Error: {e}")
         return None
 
-def scrape_data(p, n, d):
+def scrape_data(passport, nationality, dob):
     driver = get_driver()
-    if not driver: return "Driver Fail"
+    if not driver: return "System Error"
+    
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(4)
-        driver.find_element(By.ID, "txtPassportNumber").send_keys(str(p))
-        driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(1)
-        driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(str(n))
-        time.sleep(2)
-        items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
-        if items: items[0].click()
-        else: return "Nationality Error"
+        wait = WebDriverWait(driver, 20)
         
-        dob_f = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_f, str(d))
+        # 1. Passport Input
+        p_field = wait.until(EC.presence_of_element_located((By.ID, "txtPassportNumber")))
+        p_field.send_keys(str(passport))
+        
+        # 2. Nationality Selection (Fixed Logic)
+        driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
+        search_box = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")))
+        search_box.send_keys(str(nationality))
+        time.sleep(2) # Necessary for the list to filter
+        
+        # Click the first matching result in the list
+        items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
+        if items:
+            driver.execute_script("arguments[0].click();", items[0])
+        else:
+            return "Nationality Not Found"
+            
+        # 3. DOB Injection (Fixed Logic)
+        dob_field = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_field)
+        driver.execute_script(f"arguments[0].value = '{str(dob)}';", dob_field)
+        
+        # 4. Submit
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(7)
-
-        # تحسين قراءة البيانات لضمان دقة النتائج
-        def get_val(lbl):
+        
+        # 5. Wait for Result Table
+        time.sleep(8)
+        
+        # 6. Extracting Real Data (Updated XPaths)
+        def gv(id_val):
             try:
-                # محاولة البحث عن النص في الـ span المجاور للعنوان
-                return driver.find_element(By.XPATH, f"//span[contains(text(), '{lbl}')]/following-sibling::span").text.strip()
+                # Find element by ID or XPath label
+                element = driver.find_element(By.ID, id_val)
+                val = element.text.strip()
+                return val if val else "Not Found"
             except:
-                try: # محاولة البحث في الهيكل البديل للموقع
-                    return driver.find_element(By.XPATH, f"//div[contains(text(), '{lbl}')]/following-sibling::div").text.strip()
+                try:
+                    # Fallback to general span search
+                    xpath = f"//*[contains(text(), '{id_val}')]/following-sibling::span"
+                    return driver.find_element(By.XPATH, xpath).text.strip()
                 except: return "N/A"
 
-        job = get_val("Job Description")
-        if job == "N/A": return "Not Found"
+        # Check if search was successful by looking for Job Description
+        job = gv("lblJobDescription") # Looking for the actual ID used in the portal
+        if job == "N/A" or job == "":
+            job = gv("Job Description") # Try text label
+
+        if job == "N/A": return "No Data Found"
 
         return {
-            "Job": job, "Card": get_val("Card Number"),
-            "Start": get_val("Contract Start"), "End": get_val("Contract End"),
-            "Basic": get_val("Basic Salary"), "Total": get_val("Total Salary")
+            "Job Description": job,
+            "Card Number": gv("Card Number"),
+            "Contract Start": gv("Contract Start"),
+            "Contract End": gv("Contract End"),
+            "Basic Salary": gv("Basic Salary"),
+            "Total Salary": gv("Total Salary")
         }
-    except: return "Error"
-    finally: driver.quit()
+    except Exception as e:
+        return "Not Found"
+    finally:
+        driver.quit()
 
-# --- الواجهة ---
-st.title("🛡️ HAMADA TRACING SYSTEM v4.0")
+# --- User Interface ---
+st.title("🛡️ HAMADA TRACING SYSTEM")
 
-tab1, tab2 = st.tabs(["🔍 بحث فردي", "📂 معالجة إكسل"])
+tab1, tab2 = st.tabs(["🔍 Individual Search", "📂 Batch Processing"])
 
 with tab1:
     c1, c2, c3 = st.columns(3)
-    p_in = c1.text_input("رقم الجواز")
-    n_in = c2.text_input("الجنسية")
-    d_in = c3.text_input("تاريخ الميلاد")
-    if st.button("بحث"):
-        res = scrape_data(p_in, n_in, d_in)
-        if isinstance(res, dict): st.success("تم بنجاح"); st.table(pd.DataFrame([res]))
-        else: st.error(f"النتيجة: {res}")
+    p_in = c1.text_input("Passport Number", key="p1")
+    n_in = c2.text_input("Nationality", key="n1")
+    d_in = c3.text_input("DOB (DD/MM/YYYY)", key="d1")
+    
+    if st.button("Start Search"):
+        with st.spinner("Searching..."):
+            res = scrape_data(p_in, n_in, d_in)
+            if isinstance(res, dict):
+                st.success("Success!")
+                st.table(pd.DataFrame([res]))
+            else:
+                st.error(f"Result: {res}")
 
 with tab2:
-    f = st.file_uploader("ارفع ملف الإكسل", type=["xlsx"])
+    f = st.file_uploader("Upload Excel", type=["xlsx"])
     if f:
         df_in = pd.read_excel(f)
-        total_rec = len(df_in)
+        total = len(df_in)
         
-        # خيار إظهار ملف الإكسل المرفوع
-        if st.checkbox("إظهار الملف المرفوع"):
-            st.write(df_in)
-
-        col1, col2, col3, col4 = st.columns(4)
-        if col1.button("▶️ بدء المعالجة"):
+        col1, col2 = st.columns([1, 4])
+        if col1.button("▶️ Start"):
             st.session_state.stop = False
             results = []
             
-            # --- العدادات والإحصائيات ---
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            timer_p = stat_col1.empty()
-            count_p = stat_col2.empty()
-            success_p = stat_col3.empty()
+            # Metrics
+            m1, m2, m3 = st.columns(3)
+            t_box = m1.empty()
+            r_box = m2.empty()
+            s_box = m3.empty()
             
-            progress_bar = st.progress(0)
-            table_spot = st.empty()
-            
+            p_bar = st.progress(0)
+            t_spot = st.empty()
             start_time = time.time()
             success_count = 0
 
             for i, row in df_in.iterrows():
                 if st.session_state.stop: break
                 
-                # تحديث الوقت والإحصاء
-                elapsed = round(time.time() - start_time, 1)
-                timer_p.metric("⏳ الوقت المنقضي", f"{elapsed}s")
-                count_p.metric("📊 السجلات", f"{i+1} من {total_rec}")
-                success_p.metric("✅ النجاح", success_count)
+                t_box.metric("⏳ Timer", f"{round(time.time()-start_time, 1)}s")
+                r_box.metric("📊 Progress", f"{i+1} / {total}")
+                s_box.metric("✅ Success", success_count)
                 
-                # تنفيذ البحث
                 data = scrape_data(row[0], row[1], row[2])
                 
-                # تجميع النتيجة (لكل الأسماء)
-                entry = {"Passport": row[0], "Name": row[1], "Status": "Success" if isinstance(data, dict) else data}
+                entry = {"Passport": row[0], "Nationality": row[1], "DOB": row[2], "Status": "Success" if isinstance(data, dict) else data}
                 if isinstance(data, dict):
                     entry.update(data)
                     success_count += 1
                 else:
-                    # تعبئة القيم بـ "N/A" في حال الفشل لإبقاء الجدول متسقاً
-                    for col in ["Job", "Card", "Start", "End", "Basic", "Total"]: entry[col] = "N/A"
+                    for col in ["Job Description", "Card Number", "Contract Start", "Contract End", "Basic Salary", "Total Salary"]:
+                        entry[col] = "N/A"
                 
                 results.append(entry)
-                progress_bar.progress((i + 1) / total_rec)
-                table_spot.dataframe(pd.DataFrame(results))
+                p_bar.progress((i+1)/total)
+                t_spot.dataframe(pd.DataFrame(results))
 
-            st.success("✅ اكتملت المهمة!")
-            st.download_button("📥 تحميل النتائج", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "Results.csv")
-        
-        if col2.button("🛑 إيقاف"):
+            st.success("Task Finished!")
+            st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "Results.csv")
+            
+        if col2.button("🛑 Stop"):
             st.session_state.stop = True
