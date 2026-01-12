@@ -142,3 +142,4 @@ with tab2:
                 st.success(f"Finished! Total: {success_count} in {round(time.time() - start_batch_time, 2)}s")
                 st.table(pd.DataFrame(results))
                 st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "results.csv")
+
