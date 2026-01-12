@@ -20,11 +20,15 @@ hide_st_style = """
             header {visibility: hidden;}
             footer {visibility: hidden;}
             .stAppDeployButton {display:none;}
+            /* تنسيق زر تسجيل الخروج ليكون في أقصى اليمين */
+            .logout-container {
+                display: flex;
+                justify-content: flex-end;
+                padding: 10px;
+            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
-
-st.title("HAMADA TRACING SITE TEST")
 
 # --- نظام تسجيل الدخول ---
 if 'authenticated' not in st.session_state:
@@ -41,6 +45,15 @@ if not st.session_state['authenticated']:
             else:
                 st.error("❌ Incorrect Password.")
     st.stop()
+
+# --- زر تسجيل الخروج في أقصى اليمين ---
+col_title, col_logout = st.columns([0.9, 0.1])
+with col_title:
+    st.title("HAMADA TRACING SITE TEST")
+with col_logout:
+    if st.button("Log Out"):
+        st.session_state['authenticated'] = False
+        st.rerun()
 
 # --- قائمة الجنسيات الكاملة ---
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
@@ -72,12 +85,15 @@ def perform_scraping(passport, nationality, dob):
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(7)
 
-        def get_v(label):
+        def get_v(label_text):
             try:
-                # محاولة البحث عن النص في الـ span أو الـ div المجاور للعنوان
-                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
-                v = driver.find_element(By.XPATH, xpath).text.strip()
-                return v if v else "Not Found"
+                # استخدام XPath مرن يبحث عن العناوين في صفحة التفاصيل المرفقة
+                xpath = f"//*[contains(text(), '{label_text}')]/following-sibling::div | //*[contains(text(), '{label_text}')]/parent::div/following-sibling::div"
+                elements = driver.find_elements(By.XPATH, xpath)
+                for el in elements:
+                    val = el.text.strip()
+                    if val: return val
+                return "Not Found"
             except: return "Not Found"
 
         job = get_v("Job Description")
@@ -89,8 +105,8 @@ def perform_scraping(passport, nationality, dob):
             "DOB": dob,
             "Job Description": safe_translate(job),
             "Card Number": get_v("Card Number"),
-            "Contract Start": get_v("Contract Start Date"), # تم تعديل التسمية لتطابق الموقع
-            "Contract End": get_v("Contract Expiry Date"),  # تم تعديل التسمية لتطابق الموقع
+            "Contract Start": get_v("Contract Start"), # تم تحديث المفتاح بناءً على الصورة المرفقة
+            "Contract End": get_v("Contract End"),     # تم تحديث المفتاح بناءً على الصورة المرفقة
             "Basic Salary": get_v("Basic Salary"), 
             "Total Salary": get_v("Total Salary")
         }
