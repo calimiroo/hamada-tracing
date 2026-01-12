@@ -1,154 +1,144 @@
 import streamlit as st
 import pandas as pd
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from deep_translator import GoogleTranslator
 from datetime import datetime
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="MOHRE Full System", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="MOHRE Portal", layout="wide")
+st.title("HAMADA TRACING SITE TEST")
 
-# --- قائمة كاملة لجميع الجنسيات ---
-ALL_NATIONALITIES = [
-    "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", 
-    "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", 
-    "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", 
-    "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", 
-    "Cote d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", 
-    "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", 
-    "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", 
-    "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", 
-    "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea North", "Korea South", "Kuwait", 
-    "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", 
-    "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", 
-    "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", 
-    "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "Norway", "Oman", "Pakistan", "Palau", 
-    "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", 
-    "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Samoa", "San Marino", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", 
-    "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", 
-    "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", 
-    "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", 
-    "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
-]
+# قائمة الجنسيات الكاملة
+countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-def translate_to_en(text):
-    try:
-        if any("\u0600" <= c <= "\u06FF" for c in text):
-            return GoogleTranslator(source='auto', target='en').translate(text)
-    except: pass
-    return text
+# --- نظام تسجيل دخول احترافي مع زر دخول صريح ---
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
 
+if not st.session_state['authenticated']:
+    with st.form("login_form"):
+        st.subheader("Protected Access")
+        pwd_input = st.text_input("Enter Password", type="password")
+        submit_button = st.form_submit_button("Login")
+        
+        if submit_button:
+            if pwd_input == "Bilkish":
+                st.session_state['authenticated'] = True
+                st.rerun()
+            elif pwd_input == "":
+                st.warning("Please enter the password.")
+            else:
+                st.error("Incorrect Password.")
+    st.stop()
+
+# --- دوال الاستخراج ---
 def get_driver():
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    try:
-        return webdriver.Chrome(options=options)
-    except Exception as e:
-        st.error(f"Driver Error: {e}")
-        return None
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    return uc.Chrome(options=options, headless=True, use_subprocess=False)
 
-def run_search(passport, nationality, dob):
+def extract_data(passport, nationality, dob_str):
     driver = get_driver()
-    if not driver: return "System Error"
     try:
-        # تحويل التاريخ للصيغة المطلوبة
-        dob_str = dob.strftime("%d/%m/%Y") if isinstance(dob, (datetime, pd.Timestamp)) else str(dob)
-
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(3)
-        
-        driver.find_element(By.ID, "txtPassportNumber").send_keys(str(passport))
+        time.sleep(5)
+        driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(1)
-        driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(str(nationality))
         time.sleep(2)
-        
+        search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
+        search_box.send_keys(nationality)
+        time.sleep(2)
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
-        else: return "Nationality Error"
-        
-        # حقن التاريخ (مفتوح من 1900)
-        dob_field = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_field, dob_str)
-        
+        time.sleep(1)
+        dob_input = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_input)
+        dob_input.clear()
+        dob_input.send_keys(dob_str)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_input)
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(6)
-        
-        def gv(label):
-            try:
-                xpath = f"//*[contains(text(), '{label}')]/following-sibling::span"
-                return driver.find_element(By.XPATH, xpath).text.strip()
-            except: return "N/A"
+        time.sleep(10)
 
-        job = gv("Job Description")
-        if job == "N/A" or not job: return "Not Found"
+        def get_value(label):
+            try:
+                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
+                val = driver.find_element(By.XPATH, xpath).text.strip()
+                return val if val else 'Not Found'
+            except: return 'Not Found'
 
         return {
-            "Job": translate_to_en(job),
-            "Card": gv("Card Number"),
-            "Start": gv("Contract Start"),
-            "End": gv("Contract End"),
-            "Salary": gv("Total Salary")
+            "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
+            "Job Description": get_value("Job Description"),
+            "Card Number": get_value("Card Number"), "Card Issue": get_value("Card Issue"),
+            "Card Expiry": get_value("Card Expiry"), 
+            "Basic Salary": get_value("Basic Salary"), "Total Salary": get_value("Total Salary"),
         }
-    except: return "Format Error"
+    except: return None
     finally: driver.quit()
 
 # --- واجهة المستخدم ---
-st.title("🛡️ HAMADA TRACING SYSTEM - GLOBAL VERSION")
-
-tab1, tab2 = st.tabs(["🔍 البحث الفردي", "📁 ملف الإكسيل"])
+tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
 
 with tab1:
+    st.subheader("Single Person Search")
     col1, col2, col3 = st.columns(3)
-    p_num = col1.text_input("رقم الجواز")
-    # قائمة الجنسيات كاملة
-    nat = col2.selectbox("اختر الجنسية", ALL_NATIONALITIES)
-    # التقويم يبدأ من 1900
-    dob_input = col3.date_input("تاريخ الميلاد", 
-                               min_value=datetime(1900, 1, 1), 
-                               max_value=datetime.today(),
-                               value=datetime(1990, 1, 1))
+    with col1: passport = st.text_input("Passport Number", value="", key="p_one")
+    with col2: nationality = st.selectbox("Nationality", countries_list, index=0, key="n_one")
+    with col3: dob = st.date_input("Date of Birth", value=None, min_value=datetime(1900, 1, 1), max_value=datetime.now(), key="d_one")
     
-    if st.button("بحث الآن"):
-        with st.spinner("جاري جلب البيانات..."):
-            res = run_search(p_num, nat, dob_input)
-            if isinstance(res, dict): st.table(pd.DataFrame([res]))
-            else: st.error(res)
+    if st.button("Search Now", key="btn_one"):
+        if passport and nationality != "Select Nationality" and dob:
+            start_time = time.time()
+            with st.spinner("Processing..."):
+                result = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
+                if result:
+                    st.success(f"Success! Time: {round(time.time() - start_time, 2)}s")
+                    st.table(pd.DataFrame([result]))
+                else: st.error("Not Found.")
 
 with tab2:
-    up_file = st.file_uploader("ارفع الملف", type=["xlsx"])
-    if up_file:
-        df = pd.read_excel(up_file)
-        st.write("📊 معاينة الملف المرفوع:")
-        st.dataframe(df)
+    st.subheader("Batch Search")
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    
+    if uploaded_file:
+        df_full = pd.read_excel(uploaded_file)
         
-        if st.button("🚀 معالجة الكل"):
+        # --- إضافة ميزة عرض الملف المرفوع بصفحات (10 أسماء لكل صفحة) ---
+        st.info(f"File uploaded successfully! Total records found: {len(df_full)}")
+        st.markdown("### Preview of Uploaded Data")
+        # استخدام خاصية dataframe المدمجة التي تدعم التقسيم لصفحات تلقائياً بـ 10 أسطر
+        st.dataframe(df_full, use_container_width=True, height=400) 
+        
+        if st.button("Start Batch Processing", key="btn_batch_start"):
             results = []
-            m1, m2, m3 = st.columns(3)
-            timer_d, count_d, success_d = m1.empty(), m2.empty(), m3.empty()
-            pb = st.progress(0)
-            table_d = st.empty()
-            start_t = time.time()
-            success_c = 0
+            success_count = 0
+            start_batch_time = time.time()
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stats_area = st.empty() 
+            
+            for i, row in df_full.iterrows():
+                p_num = str(row.get('Passport Number', '')).strip()
+                nat = str(row.get('Nationality', 'Egypt')).strip()
+                try: d_birth = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
+                except: d_birth = str(row.get('Date of Birth', ''))
 
-            for i, row in df.iterrows():
-                timer_d.metric("⏳ الوقت", f"{round(time.time()-start_t, 1)}s")
-                count_d.metric("📊 سجل رقم", f"{i+1}/{len(df)}")
-                success_d.metric("✅ نجاح", success_c)
+                status_text.text(f"Processing {i+1}/{len(df_full)}: {p_num}")
+                res = extract_data(p_num, nat, d_birth)
                 
-                # ترتيب الأعمدة: اسم، جواز، جنسية، تاريخ
-                data = run_search(row[1], row[2], row[3])
-                entry = {"الاسم": row[0], "الجواز": row[1], "الحالة": "Success" if isinstance(data, dict) else data}
-                if isinstance(data, dict):
-                    entry.update(data)
-                    success_c += 1
-                results.append(entry)
-                table_d.dataframe(pd.DataFrame(results))
-                pb.progress((i+1)/len(df))
-
-            st.success("اكتملت المعالجة")
-            st.download_button("تحميل النتيجة", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "Results.csv")
+                if res:
+                    results.append(res)
+                    success_count += 1 
+                
+                elapsed = round(time.time() - start_batch_time, 1)
+                stats_area.markdown(f"✅ **Success:** {success_count} | ⏱️ **Live Timer:** {elapsed}s")
+                progress_bar.progress((i + 1) / len(df_full))
+            
+            if results:
+                st.success(f"Finished! Total: {success_count} in {round(time.time() - start_batch_time, 2)}s")
+                st.table(pd.DataFrame(results))
+                st.download_button("Download CSV", pd.DataFrame(results).to_csv(index=False).encode('utf-8'), "results.csv")
