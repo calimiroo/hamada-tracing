@@ -1,5 +1,4 @@
-deep-translator
-undetected-chromedriver
-selenium
+streamlit
 pandas
+selenium
 openpyxl
