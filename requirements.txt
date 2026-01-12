@@ -1,4 +1,4 @@
 streamlit
 pandas
-selenium==4.10.0
+selenium
 openpyxl
