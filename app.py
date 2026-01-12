@@ -14,15 +14,14 @@ except ImportError:
 # إعداد الصفحة وإخفاء شريط الأدوات العلوي
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
 
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stAppDeployButton {display:none;}
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stAppDeployButton {display:none;}
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- إدارة حالة الجلسة ---
 if 'authenticated' not in st.session_state:
@@ -31,22 +30,23 @@ if 'stop_process' not in st.session_state:
     st.session_state['stop_process'] = False
 if 'is_paused' not in st.session_state:
     st.session_state['is_paused'] = False
+if 'page_number' not in st.session_state:
+    st.session_state['page_number'] = 0
 
 # --- نظام تسجيل الدخول ---
 if not st.session_state['authenticated']:
-    with st.container():
-        st.subheader("Login Required")
-        pwd_input = st.text_input("Enter Password", type="password")
-        if st.button("Login"):
-            if pwd_input == "Hamada":
-                st.session_state['authenticated'] = True
-                st.rerun()
-            else:
-                st.error("❌ Incorrect Password.")
+    st.subheader("Login Required")
+    pwd_input = st.text_input("Enter Password", type="password")
+    if st.button("Login"):
+        if pwd_input == "Hamada":
+            st.session_state['authenticated'] = True
+            st.rerun()
+        else:
+            st.error("❌ Incorrect Password.")
     st.stop()
 
 # --- الهيدر وزر تسجيل الخروج ---
-col_title, col_logout = st.columns([0.85, 0.15])
+col_title, col_logout = st.columns([0.8, 0.2])
 with col_title:
     st.title("HAMADA TRACING SITE TEST")
 with col_logout:
@@ -66,27 +66,24 @@ def safe_translate(text):
     return text
 
 def perform_scraping(passport, nationality, dob):
-    # فحص أولي للبيانات الفارغة
-    if not passport or not nationality or not dob or nationality == "Select Nationality":
+    if not passport or not nationality or nationality == "Select Nationality" or not dob:
         return "Wrong Format"
-
     options = uc.ChromeOptions()
     options.add_argument('--headless')
     driver = uc.Chrome(options=options, use_subprocess=False)
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         time.sleep(3)
-        driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
+        driver.find_element(By.ID, "txtPassportNumber").send_keys(str(passport))
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
         time.sleep(1)
-        driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(nationality)
+        driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control").send_keys(str(nationality))
         time.sleep(1.5)
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
-        else: return "Not Found" # لم يجد الجنسية في القائمة
-
+        else: return "Not Found"
         dob_f = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_f, dob)
+        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_f, str(dob))
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(7)
 
@@ -99,7 +96,6 @@ def perform_scraping(passport, nationality, dob):
 
         job = get_v("Job Description")
         if job == "Not Found": return "Not Found"
-
         return {
             "Job Description": safe_translate(job),
             "Card Number": get_v("Card Number"),
@@ -116,55 +112,63 @@ tab1, tab2 = st.tabs(["Single Search", "Batch Processing"])
 
 with tab1:
     st.subheader("Single Person Search")
-    if st.button("🗑️ Clear Inputs", key="clr_s"): st.rerun()
-    col1, col2, col3 = st.columns(3)
-    p_in = col1.text_input("Passport Number", key="ps_1")
-    n_in = col2.selectbox("Nationality", countries_list, key="na_1")
-    d_in = col3.text_input("Date of Birth (DD/MM/YYYY)", key="db_1")
-
-    if st.button("Start Search", key="run_s"):
-        if p_in and d_in:
-            start_single = time.time()
-            with st.spinner("Searching..."):
-                res = perform_scraping(p_in, n_in, d_in)
-                elapsed = round(time.time() - start_single, 2)
-                if isinstance(res, dict):
-                    st.success(f"✅ Success! | ⏱️ Time: {elapsed}s")
-                    # عرض البيانات المدخلة مع المستخرجة
-                    full_res = {"Passport": p_in, "Nationality": n_in, "DOB": d_in}
-                    full_res.update(res)
-                    st.table(pd.DataFrame([full_res]))
-                else:
-                    st.error(f"❌ Result: {res} | ⏱️ Time: {elapsed}s")
+    c1, c2, c3 = st.columns(3)
+    p_in = c1.text_input("Passport Number", key="p1_single")
+    n_in = c2.selectbox("Nationality", countries_list, key="n1_single")
+    d_in = c3.text_input("Date of Birth (DD/MM/YYYY)", key="d1_single")
+    if st.button("Start Search", key="btn_single"):
+        start_t = time.time()
+        with st.spinner("Searching..."):
+            res = perform_scraping(p_in, n_in, d_in)
+            elapsed = round(time.time() - start_t, 2)
+            if isinstance(res, dict):
+                st.success(f"✅ Success! | ⏱️ Time: {elapsed}s")
+                full = {"Passport": p_in, "Nationality": n_in, "DOB": d_in}
+                full.update(res)
+                st.table(pd.DataFrame([full]))
+            else: st.error(f"❌ Result: {res} | ⏱️ Time: {elapsed}s")
 
 with tab2:
     st.subheader("Batch Excel Processing")
-    if st.button("🗑️ Reset Batch", key="clr_b"): st.rerun()
-    up_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    up_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="batch_file")
     
     if up_file:
         df_orig = pd.read_excel(up_file)
-        st.write(f"📊 **Total records in file:** {len(df_orig)}")
+        total_rows = len(df_orig)
+        st.write(f"📊 **Total records in file:** {total_rows}")
+
+        # --- ميزة تقسيم المعاينة (10 لكل صفحة) ---
+        st.write("### 📄 Preview (10 per page)")
+        num_pages = (total_rows // 10) + (1 if total_rows % 10 > 0 else 0)
+        page = st.selectbox("Select Page", range(1, num_pages + 1)) - 1
+        start_idx = page * 10
+        end_idx = min(start_idx + 10, total_rows)
         
-        c1, c2, c3, c4 = st.columns(4)
-        start_btn = c1.button("🚀 Start Search", use_container_width=True)
-        stop_btn = c2.button("🛑 STOP", use_container_width=True)
-        pause_btn = c3.button("⏸️ Pause", use_container_width=True)
-        resume_btn = c4.button("▶️ Resume", use_container_width=True)
+        df_display = df_orig.iloc[start_idx:end_idx].copy()
+        df_display.index = range(start_idx + 1, end_idx + 1)
+        st.table(df_display)
+
+        # --- أزرار التحكم في البحث ---
+        st.write("---")
+        ctrl_cols = st.columns(4)
+        start_btn = ctrl_cols[0].button("🚀 Start Batch Search", use_container_width=True)
+        stop_btn = ctrl_cols[1].button("🛑 STOP", use_container_width=True)
+        pause_btn = ctrl_cols[2].button("⏸️ Pause", use_container_width=True)
+        resume_btn = ctrl_cols[3].button("▶️ Resume", use_container_width=True)
 
         if stop_btn: st.session_state.stop_process = True
         if pause_btn: st.session_state.is_paused = True
         if resume_btn: st.session_state.is_paused = False
 
+        status_text = st.empty()
+        pb = st.progress(0)
+        table_placeholder = st.empty()
+
         if start_btn:
             st.session_state.stop_process = False
             st.session_state.is_paused = False
-            final_results = []
-            start_batch = time.time()
-            
-            pb = st.progress(0)
-            status_text = st.empty()
-            table_placeholder = st.empty()
+            final_list = []
+            start_batch_t = time.time()
             
             for i, row in df_orig.iterrows():
                 if st.session_state.stop_process:
@@ -178,38 +182,26 @@ with tab2:
                 
                 if st.session_state.stop_process: break
 
-                # بيانات السطر الحالي
-                pass_val = str(row[0]) if not pd.isna(row[0]) else ""
-                nat_val = str(row[1]) if not pd.isna(row[1]) else ""
-                dob_val = str(row[2]) if not pd.isna(row[2]) else ""
-
-                data = perform_scraping(pass_val, nat_val, dob_val)
+                p_val, n_val, d_val = str(row[0]), str(row[1]), str(row[2])
+                res = perform_scraping(p_val, n_val, d_val)
                 
-                # بناء السطر الكامل للملف المستخرج
-                row_data = {
-                    "#": i + 1,
-                    "Passport": pass_val,
-                    "Nationality": nat_val,
-                    "DOB": dob_val
-                }
-                
-                if isinstance(data, dict):
-                    row_data.update(data)
+                record = {"#": i + 1, "Passport": p_val, "Nationality": n_val, "DOB": d_val}
+                if isinstance(res, dict):
+                    record.update(res)
                 else:
-                    # في حالة الخطأ أو عدم الوجود، نملأ باقي الحقول بالقيمة المرجعة (Not Found أو Wrong Format)
-                    error_val = data if data else "Not Found"
+                    err = res if res else "Not Found"
                     for col in ["Job Description", "Card Number", "Contract Start", "Contract End", "Basic Salary", "Total Salary"]:
-                        row_data[col] = error_val
+                        record[col] = err
                 
-                final_results.append(row_data)
+                final_list.append(record)
+                elapsed = round(time.time() - start_batch_t, 1)
+                pb.progress((i + 1) / total_rows)
+                status_text.markdown(f"### 🔍 Searching: {i+1}/{total_rows} | ⏱️ Timer: {elapsed}s")
                 
-                elapsed = round(time.time() - start_batch, 1)
-                pb.progress((i + 1) / len(df_orig))
-                status_text.markdown(f"### 🔍 Searching: {i+1}/{len(df_orig)} | ⏱️ Timer: {elapsed}s")
-                
-                table_placeholder.dataframe(pd.DataFrame(final_results), use_container_width=True, hide_index=True)
+                # تحديث الجدول حياً (إظهار آخر 10 نتائج فقط للمتصفح لتسريع الأداء)
+                table_placeholder.dataframe(pd.DataFrame(final_list), use_container_width=True, hide_index=True)
 
-            if final_results:
-                st.success("Batch completed. All records processed.")
-                csv_data = pd.DataFrame(final_results).to_csv(index=False).encode('utf-8')
+            if final_list:
+                st.success("Batch task complete.")
+                csv_data = pd.DataFrame(final_list).to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Full Results (CSV)", csv_data, "MOHRE_Full_Results.csv")
