@@ -20,20 +20,19 @@ hide_st_style = """
             header {visibility: hidden;}
             footer {visibility: hidden;}
             .stAppDeployButton {display:none;}
-            /* تنسيق زر تسجيل الخروج ليكون في أقصى اليمين */
-            .logout-container {
-                display: flex;
-                justify-content: flex-end;
-                padding: 10px;
-            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- نظام تسجيل الدخول ---
+# --- إدارة حالة الجلسة (Session State) ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
+if 'stop_process' not in st.session_state:
+    st.session_state['stop_process'] = False
+if 'is_paused' not in st.session_state:
+    st.session_state['is_paused'] = False
 
+# --- نظام تسجيل الدخول ---
 if not st.session_state['authenticated']:
     with st.container():
         st.subheader("Login Required")
@@ -46,12 +45,12 @@ if not st.session_state['authenticated']:
                 st.error("❌ Incorrect Password.")
     st.stop()
 
-# --- زر تسجيل الخروج في أقصى اليمين ---
-col_title, col_logout = st.columns([0.9, 0.1])
+# --- الهيدر: العنوان وزر تسجيل الخروج ---
+col_title, col_logout = st.columns([0.85, 0.15])
 with col_title:
     st.title("HAMADA TRACING SITE TEST")
 with col_logout:
-    if st.button("Log Out"):
+    if st.button("🔴 Log Out", use_container_width=True):
         st.session_state['authenticated'] = False
         st.rerun()
 
@@ -87,27 +86,21 @@ def perform_scraping(passport, nationality, dob):
 
         def get_v(label_text):
             try:
-                # استخدام XPath مرن يبحث عن العناوين في صفحة التفاصيل المرفقة
-                xpath = f"//*[contains(text(), '{label_text}')]/following-sibling::div | //*[contains(text(), '{label_text}')]/parent::div/following-sibling::div"
-                elements = driver.find_elements(By.XPATH, xpath)
-                for el in elements:
-                    val = el.text.strip()
-                    if val: return val
-                return "Not Found"
+                xpath = f"//*[contains(text(), '{label_text}')]/following-sibling::span | //*[contains(text(), '{label_text}')]/parent::div/following-sibling::div"
+                val = driver.find_element(By.XPATH, xpath).text.strip()
+                return val if val else "Not Found"
             except: return "Not Found"
 
         job = get_v("Job Description")
         if job == "Not Found": return None
 
         return {
-            "Passport": passport, 
-            "Nationality": nationality, 
-            "DOB": dob,
+            "Passport": passport, "Nationality": nationality, "DOB": dob,
             "Job Description": safe_translate(job),
             "Card Number": get_v("Card Number"),
-            "Contract Start": get_v("Contract Start"), # تم تحديث المفتاح بناءً على الصورة المرفقة
-            "Contract End": get_v("Contract End"),     # تم تحديث المفتاح بناءً على الصورة المرفقة
-            "Basic Salary": get_v("Basic Salary"), 
+            "Contract Start": get_v("Contract Start"),
+            "Contract End": get_v("Contract End"),
+            "Basic Salary": get_v("Basic Salary"),
             "Total Salary": get_v("Total Salary")
         }
     except: return None
@@ -118,29 +111,23 @@ tab1, tab2 = st.tabs(["Single Search", "Batch Processing"])
 
 with tab1:
     st.subheader("Single Person Search")
-    if st.button("🗑️ Clear Inputs", key="clr_s"): st.rerun()
-    
     col1, col2, col3 = st.columns(3)
     p_in = col1.text_input("Passport Number", key="ps_1")
     n_in = col2.selectbox("Nationality", countries_list, key="na_1")
     d_in = col3.text_input("Date of Birth (DD/MM/YYYY)", key="db_1")
 
-    if st.button("Start Search", key="run_s"):
+    if st.button("Start Search"):
         if p_in and d_in:
-            start_single = time.time()
             with st.spinner("Searching..."):
                 res = perform_scraping(p_in, n_in, d_in)
-                elapsed = round(time.time() - start_single, 2)
                 if res:
-                    st.success(f"✅ Success! | ⏱️ Time: {elapsed}s")
+                    st.success("✅ Success!")
                     st.table(pd.DataFrame([res]))
-                else: st.error(f"❌ No data found. | ⏱️ Time: {elapsed}s")
+                else: st.error("❌ No data found.")
 
 with tab2:
     st.subheader("Batch Excel Processing")
-    if st.button("🗑️ Reset Batch", key="clr_b"): st.rerun()
-    
-    up_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="file_up")
+    up_file = st.file_uploader("Upload Excel File", type=["xlsx"])
     
     if up_file:
         df_preview = pd.read_excel(up_file)
@@ -149,7 +136,20 @@ with tab2:
         st.write(f"📊 **Total records:** {len(df_preview)}")
         st.dataframe(df_show, use_container_width=True)
         
-        if st.button("Start Search", key="run_b"):
+        # أزرار التحكم في البحث الجماعي
+        c1, c2, c3, c4 = st.columns(4)
+        start_btn = c1.button("🚀 Start Search")
+        stop_btn = c2.button("🛑 STOP")
+        pause_btn = c3.button("⏸️ Pause")
+        resume_btn = c4.button("▶️ Resume")
+
+        if stop_btn: st.session_state.stop_process = True
+        if pause_btn: st.session_state.is_paused = True
+        if resume_btn: st.session_state.is_paused = False
+
+        if start_btn:
+            st.session_state.stop_process = False
+            st.session_state.is_paused = False
             results = []
             found_count = 0
             start_batch = time.time()
@@ -159,6 +159,20 @@ with tab2:
             table_placeholder = st.empty()
             
             for i, row in df_preview.iterrows():
+                # 1. التحقق من التوقف النهائي
+                if st.session_state.stop_process:
+                    st.warning("⚠️ Process Stopped.")
+                    break
+                
+                # 2. التحقق من الإيقاف المؤقت
+                while st.session_state.is_paused:
+                    status_text.info(f"⏸️ Search Paused at record {i+1}. Waiting for Resume...")
+                    time.sleep(1) # تهدئة المعالج أثناء التوقف
+                    if st.session_state.stop_process: break
+                
+                if st.session_state.stop_process: break
+
+                # 3. تنفيذ البحث
                 data = perform_scraping(str(row[0]), str(row[1]), str(row[2]))
                 if data:
                     found_count += 1
@@ -171,10 +185,9 @@ with tab2:
                 status_text.markdown(f"### 🔍 Searching: {i+1}/{len(df_preview)} | ✅ Found: {found_count} | ⏱️ Timer: {elapsed}s")
                 
                 if results:
-                    df_res = pd.DataFrame(results)
-                    table_placeholder.dataframe(df_res, use_container_width=True, hide_index=True)
+                    table_placeholder.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
 
             if results:
-                st.success(f"Finished! Found {found_count} matching records.")
+                st.success("Task finished or partially stopped.")
                 csv_data = pd.DataFrame(results).to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Results (CSV)", csv_data, "MOHRE_Results.csv")
