@@ -6,35 +6,35 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 
-# --- إعدادات الصفحة ---
+# إعداد الصفحة
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
 
-# --- دالة تشغيل المتصفح (المحرك) ---
 def get_driver():
     options = Options()
-    options.add_argument("--headless")
+    options.add_argument("--headless=new") # استخدام النسخة الجديدة من headless
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    # هذا السطر مهم جداً للعمل على السيرفر
+    
+    # محاولة تشغيل المتصفح باستخدام المسارات الافتراضية للسيرفر
     try:
         driver = webdriver.Chrome(options=options)
         return driver
     except Exception as e:
-        st.error(f"Driver Error: {str(e)}")
+        st.error(f"خطأ في تشغيل المتصفح على السيرفر: {str(e)}")
         return None
 
 def perform_scraping(passport, nationality, dob):
     p_str = str(passport).strip()
-    if not p_str or nationality == "Select Nationality" or not str(dob).strip():
+    if not p_str or nationality == "Select Nationality" or " " in p_str:
         return "Format Error"
 
     driver = get_driver()
-    if not driver: return "Driver Failed" # إذا فشل المتصفح في العمل
+    if not driver: return "Driver Error"
 
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(4) # زيادة وقت الانتظار لضمان تحميل الصفحة
+        time.sleep(5) # وقت كافٍ للتحميل
         
         # إدخال البيانات
         driver.find_element(By.ID, "txtPassportNumber").send_keys(p_str)
@@ -47,29 +47,32 @@ def perform_scraping(passport, nationality, dob):
         if items: 
             items[0].click()
         else: 
-            return "Nationality Error"
+            return "Not Found"
         
+        # كتابة التاريخ مباشرة عبر JavaScript لتجنب مشاكل القائمة
         dob_f = driver.find_element(By.ID, "txtBirthDate")
         driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value = arguments[1];", dob_f, str(dob))
         
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(8) # الموقع بطيء، نحتاج وقت للتحميل
+        time.sleep(8)
 
-        # جلب النتائج
+        # استخراج النتائج
         def gv(label):
             try:
-                xpath = f"//*[contains(text(), '{label}')]/following-sibling::span | //*[contains(text(), '{label}')]/parent::div/following-sibling::div"
-                val = driver.find_element(By.XPATH, xpath).text.strip()
-                return val if val else "Not Found"
+                xpath = f"//*[contains(text(), '{label}')]/following-sibling::span"
+                return driver.find_element(By.XPATH, xpath).text.strip()
             except: return "Not Found"
 
         job = gv("Job Description")
-        if job == "Not Found": return "Not Found"
+        if job == "Not Found" or job == "": return "Not Found"
 
         return {
-            "Job Description": job, "Card Number": gv("Card Number"),
-            "Contract Start": gv("Contract Start"), "Contract End": gv("Contract End"),
-            "Basic Salary": gv("Basic Salary"), "Total Salary": gv("Total Salary")
+            "Job Description": job,
+            "Card Number": gv("Card Number"),
+            "Contract Start": gv("Contract Start"),
+            "Contract End": gv("Contract End"),
+            "Basic Salary": gv("Basic Salary"),
+            "Total Salary": gv("Total Salary")
         }
     except Exception as e:
         return f"Error: {str(e)}"
@@ -79,14 +82,35 @@ def perform_scraping(passport, nationality, dob):
 # --- واجهة المستخدم ---
 st.title("HAMADA TRACING SITE TEST")
 
-p_in = st.text_input("Passport Number")
-n_in = st.text_input("Nationality (Write exactly as it appears in portal)")
-d_in = st.text_input("DOB (DD/MM/YYYY)")
+tab1, tab2 = st.tabs(["بحث فردي", "بحث بالجملة"])
 
-if st.button("Search"):
-    with st.spinner("Wait... Running Browser on Server..."):
-        res = perform_scraping(p_in, n_in, d_in)
-        if isinstance(res, dict):
-            st.table(pd.DataFrame([res]))
-        else:
-            st.error(f"Result: {res}")
+with tab1:
+    c1, c2, c3 = st.columns(3)
+    p_in = c1.text_input("رقم الجواز")
+    n_in = c2.text_input("الجنسية (اكتبها بالإنجليزية كما في الموقع)")
+    d_in = c3.text_input("تاريخ الميلاد DD/MM/YYYY")
+    
+    if st.button("بدء البحث"):
+        with st.spinner("جاري تشغيل المتصفح والبحث..."):
+            res = perform_scraping(p_in, n_in, d_in)
+            if isinstance(res, dict):
+                st.success("تم العثور على البيانات!")
+                st.table(pd.DataFrame([res]))
+            else:
+                st.error(f"النتيجة: {res}")
+
+with tab2:
+    uploaded_file = st.file_uploader("ارفع ملف الإكسل", type=["xlsx"])
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        st.write(f"عدد السجلات: {len(df)}")
+        if st.button("بدء المعالجة"):
+            results = []
+            bar = st.progress(0)
+            for i, row in df.iterrows():
+                res = perform_scraping(row[0], row[1], row[2])
+                entry = {"Passport": row[0], "Result": res}
+                if isinstance(res, dict): entry.update(res)
+                results.append(entry)
+                bar.progress((i + 1) / len(df))
+            st.dataframe(pd.DataFrame(results))
