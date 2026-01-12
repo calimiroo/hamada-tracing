@@ -1,6 +1,6 @@
 streamlit
 pandas
-undetected-chromedriver
 selenium
 deep-translator
 openpyxl
+setuptools
