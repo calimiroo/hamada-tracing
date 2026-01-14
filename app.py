@@ -10,11 +10,11 @@ from deep_translator import GoogleTranslator
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
 st.title("HAMADA TRACING SITE TEST")
 
-# --- إدارة جلسة العمل (Session State) للتحكم في التشغيل ---
+# --- إدارة جلسة العمل (Session State) ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 if 'run_state' not in st.session_state:
-    st.session_state['run_state'] = 'stopped'  # 'running', 'paused', 'stopped'
+    st.session_state['run_state'] = 'stopped'
 if 'batch_results' not in st.session_state:
     st.session_state['batch_results'] = []
 
@@ -33,7 +33,7 @@ if not st.session_state['authenticated']:
             else: st.error("Incorrect Password.")
     st.stop()
 
-# --- وظائف الاستخراج ---
+# --- وظائف الاستخراج والترجمة ---
 def translate_to_english(text):
     try:
         if text and text != 'Not Found':
@@ -78,7 +78,7 @@ def extract_data(passport, nationality, dob_str):
             except: return 'Not Found'
 
         card_num = get_value("Card Number")
-        if card_num == 'Not Found': return None # لم يجد بيانات فعلياً
+        if card_num == 'Not Found': return None
 
         return {
             "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
@@ -106,7 +106,7 @@ with tab1:
             with st.spinner("Searching..."):
                 res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: st.table(pd.DataFrame([res]))
-                else: st.error("No data found for this person.")
+                else: st.error("No data found.")
 
 with tab2:
     st.subheader("Batch Processing Control")
@@ -132,22 +132,22 @@ with tab2:
             progress_bar = st.progress(0)
             status_text = st.empty()
             stats_area = st.empty()
-            live_table_area = st.empty() # لعرض النتائج الناجحة فقط
+            live_table_area = st.empty() # منطقة عرض الجدول المباشر لجميع الحالات
             
             start_time = time.time()
             actual_success = 0
             
             for i, row in df.iterrows():
-                # التحقق من الإيقاف المؤقت
+                # التحكم في الإيقاف المؤقت
                 while st.session_state.run_state == 'paused':
                     status_text.warning("Paused... click Resume to continue.")
                     time.sleep(1)
                 
-                # التحقق من الإيقاف النهائي
+                # التحكم في الإيقاف النهائي
                 if st.session_state.run_state == 'stopped':
                     break
                 
-                # تخطي ما تم معالجته إذا كان هناك استئناف
+                # تخطي المعالج سابقاً في حال الاستئناف
                 if i < len(st.session_state.batch_results):
                     if st.session_state.batch_results[i].get("Status") == "Found":
                         actual_success += 1
@@ -165,20 +165,21 @@ with tab2:
                     actual_success += 1
                     st.session_state.batch_results.append(res)
                 else:
-                    # إضافة سجل "غير موجود" للملف النهائي فقط
+                    # إضافة الحالة حتى لو لم يتم العثور عليها لتظهر في الجدول
                     st.session_state.batch_results.append({
                         "Passport Number": p_num, "Nationality": nat, "Date of Birth": dob,
+                        "Job Description": "N/A", "Card Number": "N/A", "Card Issue": "N/A",
+                        "Card Expiry": "N/A", "Basic Salary": "N/A", "Total Salary": "N/A",
                         "Status": "Not Found"
                     })
 
-                # تحديث الواجهة
+                # تحديث الواجهة والعدادات
                 elapsed = round(time.time() - start_time, 1)
                 progress_bar.progress((i + 1) / len(df))
-                stats_area.markdown(f"✅ **Actual Success:** {actual_success} | ⏱️ **Timer:** {elapsed}s")
+                stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Timer:** {elapsed}s")
                 
-                # عرض الجدول المباشر (الناجحين فقط)
-                success_df = pd.DataFrame([r for r in st.session_state.batch_results if r.get("Status") == "Found"])
-                live_table_area.dataframe(success_df, use_container_width=True)
+                # عرض الجدول المباشر شاملاً جميع الحالات (Found & Not Found)
+                live_table_area.dataframe(pd.DataFrame(st.session_state.batch_results), use_container_width=True)
 
             if st.session_state.run_state == 'running':
                 st.success("Batch Completed!")
