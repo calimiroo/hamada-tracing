@@ -4,6 +4,7 @@ import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from datetime import datetime
+from deep_translator import GoogleTranslator  # إضافة مكتبة الترجمة
 
 # إعداد الصفحة
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
@@ -32,13 +33,23 @@ if not st.session_state['authenticated']:
                 st.error("Incorrect Password.")
     st.stop()
 
-# --- دوال الاستخراج ---
+# --- دوال الاستخراج والترجمة ---
 def get_driver():
     options = uc.ChromeOptions()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     return uc.Chrome(options=options, headless=True, use_subprocess=False)
+
+# دالة الترجمة الجديدة
+def translate_to_english(text):
+    try:
+        if text and text != 'Not Found' and text.strip() != '':
+            # نترجم من أي لغة (auto) إلى الإنجليزية
+            return GoogleTranslator(source='auto', target='en').translate(text)
+        return text
+    except:
+        return text
 
 def extract_data(passport, nationality, dob_str):
     driver = get_driver()
@@ -69,9 +80,15 @@ def extract_data(passport, nationality, dob_str):
                 return val if val else 'Not Found'
             except: return 'Not Found'
 
+        # استخراج القيم
+        job_description = get_value("Job Description")
+        
+        # ترجمة المسمى الوظيفي فقط
+        translated_job = translate_to_english(job_description)
+
         return {
             "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
-            "Job Description": get_value("Job Description"),
+            "Job Description": translated_job, # هنا تم وضع القيمة المترجمة
             "Card Number": get_value("Card Number"), "Card Issue": get_value("Card Issue"),
             "Card Expiry": get_value("Card Expiry"), 
             "Basic Salary": get_value("Basic Salary"), "Total Salary": get_value("Total Salary"),
