@@ -48,6 +48,11 @@ def get_driver():
     options.add_argument('--disable-dev-shm-usage')
     return uc.Chrome(options=options, headless=True, use_subprocess=False)
 
+# دالة تلوين الخلايا الجديدة
+def color_status(val):
+    color = '#90EE90' if val == 'Found' else '#FFCCCB' # أخضر فاتح للناجح وأحمر فاتح للفاشل
+    return f'background-color: {color}'
+
 def extract_data(passport, nationality, dob_str):
     driver = get_driver()
     try:
@@ -132,22 +137,19 @@ with tab2:
             progress_bar = st.progress(0)
             status_text = st.empty()
             stats_area = st.empty()
-            live_table_area = st.empty() # منطقة عرض الجدول المباشر لجميع الحالات
+            live_table_area = st.empty()
             
             start_time = time.time()
             actual_success = 0
             
             for i, row in df.iterrows():
-                # التحكم في الإيقاف المؤقت
                 while st.session_state.run_state == 'paused':
                     status_text.warning("Paused... click Resume to continue.")
                     time.sleep(1)
                 
-                # التحكم في الإيقاف النهائي
                 if st.session_state.run_state == 'stopped':
                     break
                 
-                # تخطي المعالج سابقاً في حال الاستئناف
                 if i < len(st.session_state.batch_results):
                     if st.session_state.batch_results[i].get("Status") == "Found":
                         actual_success += 1
@@ -165,7 +167,6 @@ with tab2:
                     actual_success += 1
                     st.session_state.batch_results.append(res)
                 else:
-                    # إضافة الحالة حتى لو لم يتم العثور عليها لتظهر في الجدول
                     st.session_state.batch_results.append({
                         "Passport Number": p_num, "Nationality": nat, "Date of Birth": dob,
                         "Job Description": "N/A", "Card Number": "N/A", "Card Issue": "N/A",
@@ -173,13 +174,16 @@ with tab2:
                         "Status": "Not Found"
                     })
 
-                # تحديث الواجهة والعدادات
                 elapsed = round(time.time() - start_time, 1)
                 progress_bar.progress((i + 1) / len(df))
                 stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Timer:** {elapsed}s")
                 
-                # عرض الجدول المباشر شاملاً جميع الحالات (Found & Not Found)
-                live_table_area.dataframe(pd.DataFrame(st.session_state.batch_results), use_container_width=True)
+                # تطبيق التنسيق الشرطي (تلوين عمود Status)
+                current_df = pd.DataFrame(st.session_state.batch_results)
+                styled_df = current_df.style.map(color_status, subset=['Status'])
+                
+                # عرض الجدول الملون
+                live_table_area.dataframe(styled_df, use_container_width=True)
 
             if st.session_state.run_state == 'running':
                 st.success("Batch Completed!")
