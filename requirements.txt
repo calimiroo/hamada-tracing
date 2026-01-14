@@ -4,3 +4,4 @@ undetected-chromedriver
 selenium
 requests
 openpyxl
+deep-translator
