@@ -4,6 +4,6 @@ undetected-chromedriver
 selenium
 requests
 openpyxl
-deep-translator
 st-aggrid
 setuptools
+packaging
