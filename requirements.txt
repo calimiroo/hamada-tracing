@@ -1,6 +1,7 @@
 streamlit
 pandas
-st-aggrid
 undetected-chromedriver
 selenium
+requests
 openpyxl
+deep-translator
