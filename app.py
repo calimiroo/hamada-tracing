@@ -19,8 +19,6 @@ if 'batch_results' not in st.session_state:
     st.session_state['batch_results'] = []
 if 'start_time_ref' not in st.session_state:
     st.session_state['start_time_ref'] = None
-if 'formatted_dob' not in st.session_state:
-    st.session_state['formatted_dob'] = ""
 
 # قائمة الجنسيات
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
@@ -63,7 +61,7 @@ def color_status(val):
 def extract_data(passport, nationality, dob_str):
     driver = get_driver()
     try:
-        driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en" )
+        driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         time.sleep(4)
         driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
@@ -111,28 +109,14 @@ with tab1:
     c1, c2, c3 = st.columns(3)
     p_in = c1.text_input("Passport Number", key="s_p")
     n_in = c2.selectbox("Nationality", countries_list, key="s_n")
+    d_in = c3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
     
-    with c3:
-        d_in = st.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
-        if st.button("Format Date", key="format_btn"):
-            if d_in:
-                st.session_state.formatted_dob = d_in.strftime("%d/%m/%Y")
-        
-        # استخدام القيمة المنسقة إذا كانت موجودة، وإلا استخدم قيمة فارغة
-        formatted_dob_display = st.text_input("Formatted DOB (dd/mm/yyyy)", value=st.session_state.formatted_dob, key="s_d_formatted")
-
-
     if st.button("Search Now"):
-        # استخدم الحقل النصي المنسق للبحث
-        dob_to_use = formatted_dob_display
-        if p_in and n_in != "Select Nationality" and dob_to_use:
+        if p_in and n_in != "Select Nationality" and d_in:
             with st.spinner("Searching..."):
-                res = extract_data(p_in, n_in, dob_to_use)
+                res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: st.table(pd.DataFrame([res]))
                 else: st.error("No data found.")
-        else:
-            st.warning("Please fill in all fields, including the formatted date of birth.")
-
 
 with tab2:
     st.subheader("Batch Processing Control")
