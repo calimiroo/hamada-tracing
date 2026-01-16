@@ -6,3 +6,5 @@ requests
 openpyxl
 deep-translator
 streamlit-aggrid
+setuptools
+packaging
