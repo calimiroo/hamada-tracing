@@ -3,7 +3,7 @@ import pandas as pd
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from datetime import datetime
+from datetime import datetime, timedelta
 from deep_translator import GoogleTranslator
 
 # --- إعداد الصفحة ---
@@ -17,6 +17,8 @@ if 'run_state' not in st.session_state:
     st.session_state['run_state'] = 'stopped'
 if 'batch_results' not in st.session_state:
     st.session_state['batch_results'] = []
+if 'start_time_ref' not in st.session_state:
+    st.session_state['start_time_ref'] = None
 
 # قائمة الجنسيات
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
@@ -33,6 +35,10 @@ if not st.session_state['authenticated']:
             else: st.error("Incorrect Password.")
     st.stop()
 
+# --- دالة تحويل الوقت ---
+def format_time(seconds):
+    return str(timedelta(seconds=int(seconds)))
+
 # --- وظائف الاستخراج والترجمة ---
 def translate_to_english(text):
     try:
@@ -48,9 +54,8 @@ def get_driver():
     options.add_argument('--disable-dev-shm-usage')
     return uc.Chrome(options=options, headless=True, use_subprocess=False)
 
-# دالة تلوين الخلايا الجديدة
 def color_status(val):
-    color = '#90EE90' if val == 'Found' else '#FFCCCB' # أخضر فاتح للناجح وأحمر فاتح للفاشل
+    color = '#90EE90' if val == 'Found' else '#FFCCCB'
     return f'background-color: {color}'
 
 def extract_data(passport, nationality, dob_str):
@@ -119,18 +124,22 @@ with tab2:
     
     if uploaded_file:
         df = pd.read_excel(uploaded_file)
-        st.write(f"Total records: {len(df)}")
-        st.dataframe(df, height=200)
+        st.write(f"Total records in file: {len(df)}")
+        st.dataframe(df, height=150)
 
-        # أزرار التحكم
         col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
         if col_ctrl1.button("▶️ Start / Resume"):
             st.session_state.run_state = 'running'
+            if st.session_state.start_time_ref is None:
+                st.session_state.start_time_ref = time.time()
+        
         if col_ctrl2.button("⏸️ Pause"):
             st.session_state.run_state = 'paused'
+        
         if col_ctrl3.button("⏹️ Stop & Reset"):
             st.session_state.run_state = 'stopped'
             st.session_state.batch_results = []
+            st.session_state.start_time_ref = None
             st.rerun()
 
         if st.session_state.run_state in ['running', 'paused']:
@@ -139,7 +148,6 @@ with tab2:
             stats_area = st.empty()
             live_table_area = st.empty()
             
-            start_time = time.time()
             actual_success = 0
             
             for i, row in df.iterrows():
@@ -150,6 +158,7 @@ with tab2:
                 if st.session_state.run_state == 'stopped':
                     break
                 
+                # تخطي ما تمت معالجته
                 if i < len(st.session_state.batch_results):
                     if st.session_state.batch_results[i].get("Status") == "Found":
                         actual_success += 1
@@ -174,18 +183,18 @@ with tab2:
                         "Status": "Not Found"
                     })
 
-                elapsed = round(time.time() - start_time, 1)
-                progress_bar.progress((i + 1) / len(df))
-                stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Timer:** {elapsed}s")
+                # حساب الوقت الكلي بصيغة ساعات:دقائق:ثواني
+                elapsed_seconds = time.time() - st.session_state.start_time_ref
+                time_str = format_time(elapsed_seconds)
                 
-                # تطبيق التنسيق الشرطي (تلوين عمود Status)
+                progress_bar.progress((i + 1) / len(df))
+                stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Total Time:** `{time_str}`")
+                
                 current_df = pd.DataFrame(st.session_state.batch_results)
                 styled_df = current_df.style.map(color_status, subset=['Status'])
-                
-                # عرض الجدول الملون
                 live_table_area.dataframe(styled_df, use_container_width=True)
 
-            if st.session_state.run_state == 'running':
-                st.success("Batch Completed!")
+            if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
+                st.success(f"Batch Completed! Total Time: {format_time(time.time() - st.session_state.start_time_ref)}")
                 final_df = pd.DataFrame(st.session_state.batch_results)
                 st.download_button("Download Full Report (CSV)", final_df.to_csv(index=False).encode('utf-8'), "full_results.csv")
