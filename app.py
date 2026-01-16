@@ -6,13 +6,12 @@ from selenium.webdriver.common.by import By
 from datetime import datetime, timedelta
 from deep_translator import GoogleTranslator
 import os
-import shutil
 
 # --- إعداد الصفحة ---
-st.set_page_config(page_title="MOHRE Portal - Pro v2", layout="wide")
-st.title("MOHRE BATCH PROCESSOR (Stable & Fast)")
+st.set_page_config(page_title="MOHRE Portal - Pro", layout="wide")
+st.title("HAMADA TRACING SITE TEST")
 
-# --- إدارة جلسة العمل (Session State) ---
+# --- إدارة جلسة العمل ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 if 'run_state' not in st.session_state:
@@ -29,13 +28,10 @@ if 'df_ready' not in st.session_state:
 # --- تسجيل الدخول ---
 if not st.session_state['authenticated']:
     with st.form("login_form"):
-        st.subheader("Protected Access")
         pwd_input = st.text_input("Enter Password", type="password")
-        if st.form_submit_button("Login"):
-            if pwd_input == "Bilkish":
-                st.session_state['authenticated'] = True
-                st.rerun()
-            else: st.error("Incorrect Password.")
+        if st.form_submit_button("Login") and pwd_input == "Bilkish":
+            st.session_state['authenticated'] = True
+            st.rerun()
     st.stop()
 
 # --- وظائف المساعدة ---
@@ -59,12 +55,11 @@ def get_driver():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    # إنشاء مسار مؤقت فريد لتجنب OSError
+    # مسار مؤقت فريد لتجنب OSError
     user_data_dir = f"/tmp/chrome_user_{int(time.time())}"
     options.add_argument(f"--user-data-dir={user_data_dir}")
     try:
-        driver = uc.Chrome(options=options, headless=True, use_subprocess=False)
-        return driver
+        return uc.Chrome(options=options, headless=True, use_subprocess=False)
     except Exception as e:
         st.error(f"Driver Error: {e}")
         return None
@@ -93,8 +88,7 @@ def extract_data_logic(driver, passport, nationality, dob_str):
         def gv(label):
             try:
                 xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
-                val = driver.find_element(By.XPATH, xpath).text.strip()
-                return val if val else 'Not Found'
+                return driver.find_element(By.XPATH, xpath).text.strip()
             except: return 'Not Found'
 
         c_num = gv("Card Number")
@@ -109,7 +103,7 @@ def extract_data_logic(driver, passport, nationality, dob_str):
     except: return None
 
 # --- واجهة المستخدم ---
-countries_list = ["Select Nationality", "Egypt", "India", "Pakistan", "Bangladesh", "Philippines", "Jordan", "Syria", "Afghanistan", "Sudan"] # قائمة مختصرة للتجربة
+countries_list = ["Select Nationality", "Egypt", "India", "Pakistan", "Bangladesh", "Philippines", "Jordan", "Syria"]
 
 tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
 
@@ -122,12 +116,12 @@ with tab1:
     
     if st.button("Search Now"):
         if p_in and n_in != "Select Nationality" and d_in:
-            driver = get_driver()
+            drv = get_driver()
             with st.spinner("Searching..."):
-                res = extract_data_logic(driver, p_in, n_in, d_in.strftime("%d/%m/%Y"))
+                res = extract_data_logic(drv, p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: st.table(pd.DataFrame([res]))
                 else: st.error("No data found.")
-            driver.quit()
+            if drv: drv.quit()
 
 with tab2:
     st.subheader("Batch Processing Control")
@@ -137,86 +131,52 @@ with tab2:
         if st.session_state.df_ready is None:
             st.session_state.df_ready = pd.read_excel(uploaded_file)
         
-        # زر تنسيق التاريخ الإجمالي
         if st.button("🪄 Force Excel Dates Format (dd/mm/yyyy)"):
             try:
                 st.session_state.df_ready['Date of Birth'] = pd.to_datetime(st.session_state.df_ready['Date of Birth']).dt.strftime('%d/%m/%Y')
-                st.success("All dates formatted successfully!")
-            except: st.error("Format error: Make sure 'Date of Birth' column exists.")
+                st.success("All dates formatted!")
+            except: st.error("Check 'Date of Birth' column name.")
 
-        st.write(f"Total records: {len(st.session_state.df_ready)} | Processed: {len(st.session_state.batch_results)}")
-        
-        col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
-        if col_ctrl1.button("▶️ Start / Resume"):
+        st.dataframe(st.session_state.df_ready, height=150)
+
+        col1, col2, col3 = st.columns(3)
+        if col1.button("▶️ Start / Resume"):
             st.session_state.run_state = 'running'
-            if st.session_state.start_time_ref is None:
-                st.session_state.start_time_ref = time.time()
-        
-        if col_ctrl2.button("⏸️ Pause"):
-            st.session_state.run_state = 'paused'
-        
-        if col_ctrl3.button("⏹️ Reset Everything"):
-            st.session_state.run_state = 'stopped'
-            st.session_state.batch_results = []
-            st.session_state.last_index = 0
-            st.session_state.start_time_ref = None
-            st.session_state.df_ready = None
+            if not st.session_state.start_time_ref: st.session_state.start_time_ref = time.time()
+        if col2.button("⏸️ Pause"): st.session_state.run_state = 'paused'
+        if col3.button("⏹️ Reset"):
+            st.session_state.update({'run_state': 'stopped', 'batch_results': [], 'last_index': 0, 'start_time_ref': None, 'df_ready': None})
             st.rerun()
 
         if st.session_state.run_state in ['running', 'paused']:
             progress_bar = st.progress(0)
             status_text = st.empty()
             stats_area = st.empty()
-            live_table_area = st.empty()
+            live_table = st.empty()
             
-            actual_success = 0
-            df_to_process = st.session_state.df_ready
-            
-            # فتح المتصفح مرة واحدة لإعادة الاستخدام
             driver = get_driver()
+            df_proc = st.session_state.df_ready
             
-            for i in range(st.session_state.last_index, len(df_to_process)):
+            for i in range(st.session_state.last_index, len(df_proc)):
                 while st.session_state.run_state == 'paused':
-                    status_text.warning("Paused... click Resume to continue.")
+                    status_text.warning("Paused...")
                     time.sleep(1)
                 if st.session_state.run_state == 'stopped': break
                 
-                row = df_to_process.iloc[i]
-                p_num = str(row.get('Passport Number', '')).strip()
-                nat = str(row.get('Nationality', 'Egypt')).strip()
-                dob = str(row.get('Date of Birth', ''))
-
-                status_text.info(f"Processing {i+1}/{len(df_to_process)}: {p_num}")
+                row = df_proc.iloc[i]
+                res = extract_data_logic(driver, str(row.get('Passport Number', '')).strip(), str(row.get('Nationality', 'Egypt')).strip(), str(row.get('Date of Birth', '')))
                 
-                res = extract_data_logic(driver, p_num, nat, dob)
-                
-                if res:
-                    actual_success += 1
-                    st.session_state.batch_results.append(res)
-                else:
-                    st.session_state.batch_results.append({
-                        "Passport Number": p_num, "Nationality": nat, "Date of Birth": dob,
-                        "Job Description": "N/A", "Card Number": "N/A", "Status": "Not Found"
-                    })
+                if res: st.session_state.batch_results.append(res)
+                else: st.session_state.batch_results.append({"Passport Number": row.get('Passport Number'), "Status": "Not Found"})
                 
                 st.session_state.last_index = i + 1
-                
-                # إعادة تشغيل المتصفح كل 50 اسم لتجنب OSError
-                if (i + 1) % 50 == 0:
+                if (i + 1) % 40 == 0: # تدوير المتصفح كل 40 اسم
                     driver.quit()
                     driver = get_driver()
 
-                # تحديث الواجهة
                 elapsed = time.time() - st.session_state.start_time_ref
-                progress_bar.progress((i + 1) / len(df_to_process))
-                stats_area.markdown(f"✅ **Success:** {actual_success} | ⏱️ **Time:** `{format_time(elapsed)}`")
-                
-                # عرض الجدول الملون
-                current_df = pd.DataFrame(st.session_state.batch_results)
-                live_table_area.dataframe(current_df.style.map(color_status, subset=['Status']), use_container_width=True)
+                progress_bar.progress((i + 1) / len(df_proc))
+                stats_area.markdown(f"✅ **Processed:** {i+1} | ⏱️ **Timer:** `{format_time(elapsed)}`")
+                live_table.dataframe(pd.DataFrame(st.session_state.batch_results).style.map(color_status, subset=['Status']))
 
             if driver: driver.quit()
-            
-            if st.session_state.last_index == len(df_to_process):
-                st.success("Batch Completed!")
-                st.download_button("Download Report", pd.DataFrame(st.session_state.batch_results).to_csv(index=False).encode('utf-8'), "full_results.csv")
