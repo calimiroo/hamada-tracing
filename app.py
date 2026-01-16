@@ -19,27 +19,25 @@ if 'batch_results' not in st.session_state:
     st.session_state['batch_results'] = []
 if 'start_time_ref' not in st.session_state:
     st.session_state['start_time_ref'] = None
-
-# قائمة الجنسيات
-countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
+if 'df_ready' not in st.session_state:
+    st.session_state['df_ready'] = None
 
 # --- تسجيل الدخول ---
 if not st.session_state['authenticated']:
     with st.form("login_form"):
-        st.subheader("Protected Access")
         pwd_input = st.text_input("Enter Password", type="password")
-        if st.form_submit_button("Login"):
-            if pwd_input == "Bilkish":
-                st.session_state['authenticated'] = True
-                st.rerun()
-            else: st.error("Incorrect Password.")
+        if st.form_submit_button("Login") and pwd_input == "Bilkish":
+            st.session_state['authenticated'] = True
+            st.rerun()
     st.stop()
 
-# --- دالة تحويل الوقت ---
+# قائمة الجنسيات المختصرة (للعرض)
+countries_list = ["Select Nationality", "Egypt", "India", "Pakistan", "Bangladesh", "Philippines", "Jordan", "Syria"] # يمكن استبدالها بالقائمة الكاملة
+
+# --- وظائف المساعدة ---
 def format_time(seconds):
     return str(timedelta(seconds=int(seconds)))
 
-# --- وظائف الاستخراج والترجمة ---
 def translate_to_english(text):
     try:
         if text and text != 'Not Found':
@@ -80,23 +78,21 @@ def extract_data(passport, nationality, dob_str):
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(8)
 
-        def get_value(label):
+        def gv(label):
             try:
                 xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else 'Not Found'
             except: return 'Not Found'
 
-        card_num = get_value("Card Number")
-        if card_num == 'Not Found': return None
+        c_num = gv("Card Number")
+        if c_num == 'Not Found': return None
 
         return {
             "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
-            "Job Description": translate_to_english(get_value("Job Description")),
-            "Card Number": card_num, "Card Issue": get_value("Card Issue"),
-            "Card Expiry": get_value("Card Expiry"), 
-            "Basic Salary": get_value("Basic Salary"), "Total Salary": get_value("Total Salary"),
-            "Status": "Found"
+            "Job Description": translate_to_english(gv("Job Description")),
+            "Card Number": c_num, "Card Issue": gv("Card Issue"), "Card Expiry": gv("Card Expiry"), 
+            "Basic Salary": gv("Basic Salary"), "Total Salary": gv("Total Salary"), "Status": "Found"
         }
     except: return None
     finally: driver.quit()
@@ -109,19 +105,12 @@ with tab1:
     c1, c2, c3 = st.columns(3)
     p_in = c1.text_input("Passport Number", key="s_p")
     n_in = c2.selectbox("Nationality", countries_list, key="s_n")
-    
-    # --- إضافة زر الفورمات فوق التاريخ ---
-    with c3:
-        if st.button("🪄 Force Format (dd/mm/yyyy)"):
-            st.toast("Date will be forced to dd/mm/yyyy", icon="✅")
-        d_in = st.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
+    d_in = c3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
     
     if st.button("Search Now"):
         if p_in and n_in != "Select Nationality" and d_in:
-            # هنا يتم تطبيق الفورمات إجبارياً قبل الإرسال
-            forced_dob = d_in.strftime("%d/%m/%Y")
-            with st.spinner(f"Searching with date: {forced_dob}"):
-                res = extract_data(p_in, n_in, forced_dob)
+            with st.spinner("Searching..."):
+                res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: st.table(pd.DataFrame([res]))
                 else: st.error("No data found.")
 
@@ -130,9 +119,20 @@ with tab2:
     uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
     
     if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        st.write(f"Total records in file: {len(df)}")
-        st.dataframe(df, height=150)
+        if st.session_state.df_ready is None:
+            st.session_state.df_ready = pd.read_excel(uploaded_file)
+        
+        # --- زر الفورمات الإجمالي لملف الإكسل ---
+        if st.button("🪄 Force Excel Dates Format (dd/mm/yyyy)"):
+            try:
+                # تحويل عمود التاريخ في الملف بالكامل
+                st.session_state.df_ready['Date of Birth'] = pd.to_datetime(st.session_state.df_ready['Date of Birth']).dt.strftime('%d/%m/%Y')
+                st.success("All dates in Excel have been formatted to dd/mm/yyyy!")
+            except Exception as e:
+                st.error(f"Error formatting dates: {e}")
+
+        st.write(f"Total records: {len(st.session_state.df_ready)}")
+        st.dataframe(st.session_state.df_ready, height=150)
 
         col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
         if col_ctrl1.button("▶️ Start / Resume"):
@@ -147,6 +147,7 @@ with tab2:
             st.session_state.run_state = 'stopped'
             st.session_state.batch_results = []
             st.session_state.start_time_ref = None
+            st.session_state.df_ready = None
             st.rerun()
 
         if st.session_state.run_state in ['running', 'paused']:
@@ -156,36 +157,24 @@ with tab2:
             live_table_area = st.empty()
             
             actual_success = 0
+            df_to_process = st.session_state.df_ready
             
-            for i, row in df.iterrows():
+            for i, row in df_to_process.iterrows():
                 while st.session_state.run_state == 'paused':
                     status_text.warning("Paused... click Resume to continue.")
                     time.sleep(1)
                 
-                if st.session_state.run_state == 'stopped':
-                    break
+                if st.session_state.run_state == 'stopped': break
                 
                 if i < len(st.session_state.batch_results):
-                    if st.session_state.batch_results[i].get("Status") == "Found":
-                        actual_success += 1
+                    if st.session_state.batch_results[i].get("Status") == "Found": actual_success += 1
                     continue
 
                 p_num = str(row.get('Passport Number', '')).strip()
                 nat = str(row.get('Nationality', 'Egypt')).strip()
-                
-                # --- معالجة التاريخ إجبارياً dd/mm/yyyy ---
-                try:
-                    # تحويل أي صيغة تاريخ في إكسل إلى التنسيق المطلوب
-                    dob_val = row.get('Date of Birth')
-                    if isinstance(dob_val, datetime):
-                        dob = dob_val.strftime('%d/%m/%Y')
-                    else:
-                        # محاولة التحويل من نص
-                        dob = pd.to_datetime(dob_val).strftime('%d/%m/%Y')
-                except:
-                    dob = str(row.get('Date of Birth', ''))
+                dob = str(row.get('Date of Birth', ''))
 
-                status_text.info(f"Processing {i+1}/{len(df)}: {p_num} | Date: {dob}")
+                status_text.info(f"Processing {i+1}/{len(df_to_process)}: {p_num}")
                 res = extract_data(p_num, nat, dob)
                 
                 if res:
@@ -194,22 +183,16 @@ with tab2:
                 else:
                     st.session_state.batch_results.append({
                         "Passport Number": p_num, "Nationality": nat, "Date of Birth": dob,
-                        "Job Description": "N/A", "Card Number": "N/A", "Card Issue": "N/A",
-                        "Card Expiry": "N/A", "Basic Salary": "N/A", "Total Salary": "N/A",
-                        "Status": "Not Found"
+                        "Job Description": "N/A", "Card Number": "N/A", "Status": "Not Found"
                     })
 
                 elapsed_seconds = time.time() - st.session_state.start_time_ref
-                time_str = format_time(elapsed_seconds)
-                
-                progress_bar.progress((i + 1) / len(df))
-                stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Total Time:** `{time_str}`")
+                progress_bar.progress((i + 1) / len(df_to_process))
+                stats_area.markdown(f"✅ **Actual Success:** {actual_success} | ⏱️ **Total Time:** `{format_time(elapsed_seconds)}`")
                 
                 current_df = pd.DataFrame(st.session_state.batch_results)
-                styled_df = current_df.style.map(color_status, subset=['Status'])
-                live_table_area.dataframe(styled_df, use_container_width=True)
+                live_table_area.dataframe(current_df.style.map(color_status, subset=['Status']), use_container_width=True)
 
-            if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
-                st.success(f"Batch Completed! Total Time: {format_time(time.time() - st.session_state.start_time_ref)}")
-                final_df = pd.DataFrame(st.session_state.batch_results)
-                st.download_button("Download Full Report (CSV)", final_df.to_csv(index=False).encode('utf-8'), "full_results.csv")
+            if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df_to_process):
+                st.success("Batch Completed!")
+                st.download_button("Download CSV", pd.DataFrame(st.session_state.batch_results).to_csv(index=False).encode('utf-8'), "results.csv")
