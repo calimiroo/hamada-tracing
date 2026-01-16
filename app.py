@@ -3,180 +3,200 @@ import pandas as pd
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from datetime import datetime, timedelta
-from deep_translator import GoogleTranslator
+from selenium.common.exceptions import *
+from datetime import datetime
 import os
+import requests  # for translation via API
+from st_aggrid import AgGrid, GridOptionsBuilder  # للجدول مع pagination
 
-# --- إعداد الصفحة ---
-st.set_page_config(page_title="MOHRE Portal - Pro", layout="wide")
+# All countries list (alphabetical, full list)
+countries = [
+    "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+    "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia",
+    "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+    "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)",
+    "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo",
+    "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea",
+    "Estonia", "Eswatini (fmr. \"Swaziland\")", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany",
+    "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary",
+    "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan",
+    "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein",
+    "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania",
+    "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar (formerly Burma)",
+    "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia",
+    "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines",
+    "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines",
+    "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore",
+    "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan",
+    "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago",
+    "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America",
+    "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+]
+
+# Set page config
+st.set_page_config(page_title="MOHRE Contract Extractor", layout="wide")
 st.title("HAMADA TRACING SITE TEST")
 
-# --- إدارة جلسة العمل ---
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-if 'run_state' not in st.session_state:
-    st.session_state['run_state'] = 'stopped'
-if 'batch_results' not in st.session_state:
-    st.session_state['batch_results'] = []
-if 'last_index' not in st.session_state:
-    st.session_state['last_index'] = 0
-if 'start_time_ref' not in st.session_state:
-    st.session_state['start_time_ref'] = None
-if 'df_ready' not in st.session_state:
-    st.session_state['df_ready'] = None
-
-# --- تسجيل الدخول ---
-if not st.session_state['authenticated']:
-    with st.form("login_form"):
-        pwd_input = st.text_input("Enter Password", type="password")
-        if st.form_submit_button("Login") and pwd_input == "Bilkish":
-            st.session_state['authenticated'] = True
-            st.rerun()
+# Password protection
+password = st.text_input("Enter Password", type="password")
+if password != "Bilkish":
+    st.error("Incorrect Password")
     st.stop()
 
-# --- وظائف المساعدة ---
-def format_time(seconds):
-    return str(timedelta(seconds=int(seconds)))
-
-def translate_to_english(text):
-    try:
-        if text and text != 'Not Found':
-            return GoogleTranslator(source='auto', target='en').translate(text)
-        return text
-    except: return text
-
-def color_status(val):
-    if val == 'Found': return 'background-color: #90EE90'
-    if val == 'Not Found': return 'background-color: #FFCCCB'
-    return ''
-
+# Driver setup
 def get_driver():
     options = uc.ChromeOptions()
-    options.add_argument('--headless')
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    # مسار مؤقت فريد لتجنب OSError
-    user_data_dir = f"/tmp/chrome_user_{int(time.time())}"
-    options.add_argument(f"--user-data-dir={user_data_dir}")
-    try:
-        return uc.Chrome(options=options, headless=True, use_subprocess=False)
-    except Exception as e:
-        st.error(f"Driver Error: {e}")
-        return None
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--lang=en-US')
+    return uc.Chrome(options=options)
 
-def extract_data_logic(driver, passport, nationality, dob_str):
+# Translation function using free API (e.g., MyMemory)
+def translate_text(text, from_lang='ar', to_lang='en'):
+    if not text or text == 'Not Found':
+        return text
+    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={from_lang}|{to_lang}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()['responseData']['translatedText']
+    return text  # Fallback if API fails
+
+# Extraction function
+def extract_single(passport, nationality, dob_str):
+    driver = get_driver()
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(4)
+        time.sleep(5)
         driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(1)
+        time.sleep(3)
         search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
         search_box.send_keys(nationality)
-        time.sleep(1)
+        time.sleep(3)
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
-        if items: items[0].click()
-        
+        if items:
+            items[0].click()
+        time.sleep(2)
         dob_input = driver.find_element(By.ID, "txtBirthDate")
         driver.execute_script("arguments[0].removeAttribute('readonly');", dob_input)
         dob_input.clear()
         dob_input.send_keys(dob_str)
         driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_input)
+        time.sleep(1)
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(8)
-
-        def gv(label):
+        time.sleep(12)
+        def get_value(label):
             try:
                 xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
                 return driver.find_element(By.XPATH, xpath).text.strip()
-            except: return 'Not Found'
-
-        c_num = gv("Card Number")
-        if c_num == 'Not Found': return None
-
-        return {
-            "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str,
-            "Job Description": translate_to_english(gv("Job Description")),
-            "Card Number": c_num, "Card Issue": gv("Card Issue"), "Card Expiry": gv("Card Expiry"), 
-            "Basic Salary": gv("Basic Salary"), "Total Salary": gv("Total Salary"), "Status": "Found"
+            except:
+                return 'Not Found'
+        contract_type = get_value("Contract Type")
+        job_description = get_value("Job Description")
+        # Translate from Arabic to English
+        contract_type_en = translate_text(contract_type)
+        job_description_en = translate_text(job_description)
+        result = {
+            "Passport Number": passport,
+            "Nationality": nationality,
+            "Date of Birth": dob_str,
+            "Card Number": get_value("Card Number"),
+            "Card Issue": get_value("Card Issue"),
+            "Card Expiry": get_value("Card Expiry"),
+            "Contract Type": contract_type_en,
+            "Contract Start": get_value("Contract Start"),
+            "Contract End": get_value("Contract End"),
+            "Job Description": job_description_en,
+            "Basic Salary": get_value("Basic Salary"),
+            "Total Salary": get_value("Total Salary"),
+            "Allowance Residence": get_value("Allowance Residence"),
+            "Allowance Transport": get_value("Allowance Transport"),
+            "Allowance Other 1": get_value("Allowance Other 1"),
+            "Allowance Other 2": get_value("Allowance Other 2"),
+            "Allowance Other 3": get_value("Allowance Other 3"),
+            "Allowance Other 4": get_value("Allowance Other 4"),
         }
-    except: return None
+        return result
+    except Exception as e:
+        return {"Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_str, "Error": str(e)}
+    finally:
+        driver.quit()
 
-# --- واجهة المستخدم ---
-countries_list = ["Select Nationality", "Egypt", "India", "Pakistan", "Bangladesh", "Philippines", "Jordan", "Syria"]
-
+# Tabs
 tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
-
 with tab1:
     st.subheader("Single Person Search")
-    c1, c2, c3 = st.columns(3)
-    p_in = c1.text_input("Passport Number", key="s_p")
-    n_in = c2.selectbox("Nationality", countries_list, key="s_n")
-    d_in = c3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
-    
-    if st.button("Search Now"):
-        if p_in and n_in != "Select Nationality" and d_in:
-            drv = get_driver()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        passport = st.text_input("Passport Number")
+    with col2:
+        nationality = st.selectbox("Nationality", countries, index=countries.index("Egypt") if "Egypt" in countries else 0)
+    with col3:
+        dob = st.date_input("Date of Birth", datetime(1990, 1, 1))
+    dob_str = dob.strftime("%d/%m/%Y")
+    if st.button("Search"):
+        if passport:
             with st.spinner("Searching..."):
-                res = extract_data_logic(drv, p_in, n_in, d_in.strftime("%d/%m/%Y"))
-                if res: st.table(pd.DataFrame([res]))
-                else: st.error("No data found.")
-            if drv: drv.quit()
-
+                result = extract_single(passport, nationality, dob_str)
+            st.success("Done!")
+            st.dataframe(pd.DataFrame([result]), use_container_width=True)
+        else:
+            st.error("Enter Passport Number")
 with tab2:
-    st.subheader("Batch Processing Control")
-    uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
-    
+    st.subheader("Upload Excel for Batch Search")
+    uploaded_file = st.file_uploader("Upload data.xlsx", type=["xlsx"])
     if uploaded_file:
-        if st.session_state.df_ready is None:
-            st.session_state.df_ready = pd.read_excel(uploaded_file)
+        # قراءة الإكسل بدون dtype محدد، ثم تحويل Date of Birth إلى string وإعادة تنسيق
+        df = pd.read_excel(uploaded_file)
         
-        if st.button("🪄 Force Excel Dates Format (dd/mm/yyyy)"):
-            try:
-                st.session_state.df_ready['Date of Birth'] = pd.to_datetime(st.session_state.df_ready['Date of Birth']).dt.strftime('%d/%m/%Y')
-                st.success("All dates formatted!")
-            except: st.error("Check 'Date of Birth' column name.")
-
-        st.dataframe(st.session_state.df_ready, height=150)
-
-        col1, col2, col3 = st.columns(3)
-        if col1.button("▶️ Start / Resume"):
-            st.session_state.run_state = 'running'
-            if not st.session_state.start_time_ref: st.session_state.start_time_ref = time.time()
-        if col2.button("⏸️ Pause"): st.session_state.run_state = 'paused'
-        if col3.button("⏹️ Reset"):
-            st.session_state.update({'run_state': 'stopped', 'batch_results': [], 'last_index': 0, 'start_time_ref': None, 'df_ready': None})
-            st.rerun()
-
-        if st.session_state.run_state in ['running', 'paused']:
+        # إعادة تنسيق Date of Birth إذا كان datetime أو string
+        if 'Date of Birth' in df.columns:
+            df['Date of Birth'] = df['Date of Birth'].apply(lambda x: pd.to_datetime(x, dayfirst=True, errors='coerce').strftime('%d/%m/%Y') if pd.notnull(x) else 'Not Found')
+        
+        # عرض الpreview الكامل مع pagination باستخدام AgGrid (10 rows per page)
+        st.write("Uploaded File Preview (Full with Pagination):")
+        gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)  # 10 rows per page
+        gb.configure_side_bar()  # يضيف filters وcolumns
+        grid_options = gb.build()
+        AgGrid(df, gridOptions=grid_options, height=400, use_container_width=True)
+        
+        if st.button("Start Batch Search"):
+            start_time = time.time()  # بداية قياس الوقت
             progress_bar = st.progress(0)
             status_text = st.empty()
-            stats_area = st.empty()
-            live_table = st.empty()
-            
-            driver = get_driver()
-            df_proc = st.session_state.df_ready
-            
-            for i in range(st.session_state.last_index, len(df_proc)):
-                while st.session_state.run_state == 'paused':
-                    status_text.warning("Paused...")
-                    time.sleep(1)
-                if st.session_state.run_state == 'stopped': break
+            found_count_text = st.empty()  # عنصر لعرض عدد النتائج المكتشفة
+            time_text = st.empty()  # عنصر جديد لعرض الوقت الممضي
+            results = []
+            found_count = 0  # عداد النتائج الناجحة
+            for i, row in df.iterrows():
+                passport = str(row.get('Passport Number', '')).strip()
+                nationality = str(row.get('Nationality', 'Egypt')).strip()
+                original_dob = row.get('Date of Birth', '')
+                dob_str = original_dob if original_dob != 'Not Found' else ''
+                status_text.text(f"Searching: {passport} ({i+1}/{len(df)})")
+                result = extract_single(passport, nationality, dob_str)
+                results.append(result)
+                # زد العداد إذا كانت النتيجة ناجحة (مثلاً إذا وجد Card Number)
+                if result.get('Card Number', 'Not Found') != 'Not Found':
+                    found_count += 1
+                found_count_text.text(f"Found so far: {found_count}")
                 
-                row = df_proc.iloc[i]
-                res = extract_data_logic(driver, str(row.get('Passport Number', '')).strip(), str(row.get('Nationality', 'Egypt')).strip(), str(row.get('Date of Birth', '')))
+                # حساب وعرض الوقت الممضي
+                elapsed_time = time.time() - start_time
+                time_text.text(f"Elapsed time: {elapsed_time:.2f} seconds")
                 
-                if res: st.session_state.batch_results.append(res)
-                else: st.session_state.batch_results.append({"Passport Number": row.get('Passport Number'), "Status": "Not Found"})
-                
-                st.session_state.last_index = i + 1
-                if (i + 1) % 40 == 0: # تدوير المتصفح كل 40 اسم
-                    driver.quit()
-                    driver = get_driver()
-
-                elapsed = time.time() - st.session_state.start_time_ref
-                progress_bar.progress((i + 1) / len(df_proc))
-                stats_area.markdown(f"✅ **Processed:** {i+1} | ⏱️ **Timer:** `{format_time(elapsed)}`")
-                live_table.dataframe(pd.DataFrame(st.session_state.batch_results).style.map(color_status, subset=['Status']))
-
-            if driver: driver.quit()
+                progress_bar.progress((i + 1) / len(df))
+            result_df = pd.DataFrame(results)
+            total_time = time.time() - start_time  # الوقت الإجمالي
+            st.success("Batch Search Complete!")
+            st.write(f"Total search time: {total_time:.2f} seconds")  # عرض الوقت الإجمالي في النهاية
+            st.dataframe(result_df, use_container_width=True, height=800)
+            # Download
+            csv = result_df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download Results as CSV", csv, "contract_results.csv", "text/csv")
+st.markdown("---")
+st.caption("Developed by Grok - All in English")
