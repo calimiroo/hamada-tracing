@@ -109,12 +109,19 @@ with tab1:
     c1, c2, c3 = st.columns(3)
     p_in = c1.text_input("Passport Number", key="s_p")
     n_in = c2.selectbox("Nationality", countries_list, key="s_n")
-    d_in = c3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
+    
+    # --- إضافة زر الفورمات فوق التاريخ ---
+    with c3:
+        if st.button("🪄 Force Format (dd/mm/yyyy)"):
+            st.toast("Date will be forced to dd/mm/yyyy", icon="✅")
+        d_in = st.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
     
     if st.button("Search Now"):
         if p_in and n_in != "Select Nationality" and d_in:
-            with st.spinner("Searching..."):
-                res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
+            # هنا يتم تطبيق الفورمات إجبارياً قبل الإرسال
+            forced_dob = d_in.strftime("%d/%m/%Y")
+            with st.spinner(f"Searching with date: {forced_dob}"):
+                res = extract_data(p_in, n_in, forced_dob)
                 if res: st.table(pd.DataFrame([res]))
                 else: st.error("No data found.")
 
@@ -158,7 +165,6 @@ with tab2:
                 if st.session_state.run_state == 'stopped':
                     break
                 
-                # تخطي ما تمت معالجته
                 if i < len(st.session_state.batch_results):
                     if st.session_state.batch_results[i].get("Status") == "Found":
                         actual_success += 1
@@ -166,10 +172,20 @@ with tab2:
 
                 p_num = str(row.get('Passport Number', '')).strip()
                 nat = str(row.get('Nationality', 'Egypt')).strip()
-                try: dob = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
-                except: dob = str(row.get('Date of Birth', ''))
+                
+                # --- معالجة التاريخ إجبارياً dd/mm/yyyy ---
+                try:
+                    # تحويل أي صيغة تاريخ في إكسل إلى التنسيق المطلوب
+                    dob_val = row.get('Date of Birth')
+                    if isinstance(dob_val, datetime):
+                        dob = dob_val.strftime('%d/%m/%Y')
+                    else:
+                        # محاولة التحويل من نص
+                        dob = pd.to_datetime(dob_val).strftime('%d/%m/%Y')
+                except:
+                    dob = str(row.get('Date of Birth', ''))
 
-                status_text.info(f"Processing {i+1}/{len(df)}: {p_num}")
+                status_text.info(f"Processing {i+1}/{len(df)}: {p_num} | Date: {dob}")
                 res = extract_data(p_num, nat, dob)
                 
                 if res:
@@ -183,7 +199,6 @@ with tab2:
                         "Status": "Not Found"
                     })
 
-                # حساب الوقت الكلي بصيغة ساعات:دقائق:ثواني
                 elapsed_seconds = time.time() - st.session_state.start_time_ref
                 time_str = format_time(elapsed_seconds)
                 
