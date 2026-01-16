@@ -5,71 +5,61 @@ import os
 import requests
 from datetime import datetime, timedelta
 
-# حل مشكلة Python 3.13 ونقص distutils
+# حل استباقي لمشكلة نقص distutils في نسخ بايثون الجديدة
 try:
-    from distutils.version import LooseVersion
+    import distutils.version
 except ImportError:
-    # إنشاء بديل لمكتبة distutils لتجنب انهيار الموقع في النسخ الجديدة
     import sys
     from packaging import version
-    class MockDistutils:
-        class version:
-            LooseVersion = version.parse
-    sys.modules['distutils'] = MockDistutils
-    sys.modules['distutils.version'] = MockDistutils.version
+    import types
+    m = types.ModuleType('distutils')
+    sys.modules['distutils'] = m
+    m.version = types.ModuleType('distutils.version')
+    sys.modules['distutils.version'] = m.version
+    m.version.LooseVersion = version.parse
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # إعداد الصفحة
-st.set_page_config(page_title="MOHRE Pro Contract", layout="wide")
+st.set_page_config(page_title="MOHRE Stable Pro", layout="wide")
 
-# القائمة الجانبية (Sidebar) كما طلبت في الصورة ليكون المنظر احترافياً
+# القائمة الجانبية (Sidebar)
 with st.sidebar:
-    st.title("⚙️ Control Panel")
-    st.info("Management Tools")
-    
-    # خيار تنسيق التاريخ داخل القائمة الجانبية
-    if st.button("🪄 Format Dates (dd/mm/yyyy)"):
-        if 'df_main' in st.session_state:
+    st.title("🛠️ الأدوات")
+    if st.button("🪄 تنسيق التاريخ (dd/mm/yyyy)"):
+        if 'df_data' in st.session_state:
             try:
-                st.session_state.df_main['Date of Birth'] = pd.to_datetime(st.session_state.df_main['Date of Birth']).dt.strftime('%d/%m/%Y')
-                st.success("Format Applied!")
+                st.session_state.df_data['Date of Birth'] = pd.to_datetime(st.session_state.df_data['Date of Birth']).dt.strftime('%d/%m/%Y')
+                st.success("تم التنسيق!")
                 st.rerun()
-            except: st.error("Date column error")
-        else: st.warning("Upload a file first!")
-
+            except: st.error("خطأ في عمود التاريخ")
     st.markdown("---")
-    st.caption("Version 2.0 - Stable")
 
-st.title("HAMADA TRACING SITE TEST")
+st.title("HAMADA TRACING SITE - VERSION 2026")
 
-# الحماية بكلمة مرور
+# الحماية (Password)
 if 'auth' not in st.session_state: st.session_state.auth = False
 if not st.session_state.auth:
-    pwd = st.text_input("Enter Password", type="password")
+    pwd = st.text_input("Password", type="password")
     if pwd == "Bilkish":
         st.session_state.auth = True
         st.rerun()
     st.stop()
 
-# دالة تشغيل المتصفح مع حل مشكلة [Errno 24] Too many open files
+# دالة تشغيل المتصفح (تمنع خطأ Errno 24)
 def get_driver():
     options = uc.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    # إنشاء مسار مؤقت فريد لتحرير الملفات المفتوحة (OS Handles)
-    user_dir = f"/tmp/chrome_user_{int(time.time())}"
-    options.add_argument(f"--user-data-dir={user_dir}")
-    try:
-        return uc.Chrome(options=options, headless=True, use_subprocess=False)
-    except Exception as e:
-        st.error(f"Failed to start Chrome: {e}")
-        return None
+    # مسار فريد لتحرير الملفات المفتوحة
+    options.add_argument(f"--user-data-dir=/tmp/chrome_user_{int(time.time())}")
+    return uc.Chrome(options=options, headless=True, use_subprocess=False)
 
-def extract_logic(driver, passport, nationality, dob):
+# دالة البحث (Logic) - كما في الكود القديم
+def run_search(driver, passport, nationality, dob):
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         time.sleep(5)
@@ -81,11 +71,11 @@ def extract_logic(driver, passport, nationality, dob):
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
         
-        dob_in = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_in)
-        dob_in.clear()
-        dob_in.send_keys(dob)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_in)
+        dob_field = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_field)
+        dob_field.clear()
+        dob_field.send_keys(dob)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_field)
         driver.find_element(By.ID, "btnSubmit").click()
         time.sleep(10)
 
@@ -95,52 +85,37 @@ def extract_logic(driver, passport, nationality, dob):
                 return driver.find_element(By.XPATH, xp).text.strip()
             except: return 'N/A'
 
-        return {"Passport": passport, "Card": gv("Card Number"), "Salary": gv("Total Salary"), "Status": "Success"}
-    except: return {"Passport": passport, "Status": "Failed"}
+        return {"Passport": passport, "Card Number": gv("Card Number"), "Salary": gv("Total Salary"), "Status": "Success"}
+    except: return {"Passport": passport, "Status": "Error/Timeout"}
 
-# واجهة رفع الملفات والجدول
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-if uploaded_file:
-    if 'df_main' not in st.session_state:
-        st.session_state.df_main = pd.read_excel(uploaded_file)
+# رفع الملف والجدول الاحترافي
+uploaded = st.file_uploader("Upload Excel", type=["xlsx"])
+if uploaded:
+    if 'df_data' not in st.session_state:
+        st.session_state.df_data = pd.read_excel(uploaded)
     
-    # إعداد الجدول المتقدم (AgGrid) مع تفعيل القائمة (Menu) كما طلبت
-    gb = GridOptionsBuilder.from_dataframe(st.session_state.df_main)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-    gb.configure_side_bar() # هذا يضيف القائمة الجانبية داخل الجدول (التي ظهرت في صورتك)
-    gb.configure_default_column(editable=True, groupable=True, filter=True)
-    grid_options = gb.build()
+    # إعداد AgGrid (القائمة المنسدلة والمينو)
+    gb = GridOptionsBuilder.from_dataframe(st.session_state.df_data)
+    gb.configure_pagination(paginationPageSize=10)
+    gb.configure_side_bar() # القائمة الجانبية داخل الجدول
+    gb.configure_default_column(editable=True, filter=True)
+    grid_opt = gb.build()
 
-    st.write("Right-click inside table for context options:")
-    grid_response = AgGrid(
-        st.session_state.df_main,
-        gridOptions=grid_options,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        theme='alpine',
-        height=400
-    )
+    AgGrid(st.session_state.df_data, gridOptions=grid_opt, theme='alpine', height=400)
 
     if st.button("🚀 Start Batch Search"):
-        start_t = time.time()
         prog = st.progress(0)
-        status = st.empty()
-        res_list = []
-        
+        results = []
         driver = get_driver()
-        for i, row in st.session_state.df_main.iterrows():
-            # تدوير المتصفح كل 15 اسماً لحل مشكلة Errno 24
+        for i, row in st.session_state.df_data.iterrows():
+            # تدوير المتصفح كل 15 اسم لمنع تعليق الملفات
             if i > 0 and i % 15 == 0:
                 driver.quit()
                 driver = get_driver()
             
-            p, n, d = str(row['Passport Number']), str(row['Nationality']), str(row['Date of Birth'])
-            status.info(f"Searching: {p} ({i+1}/{len(st.session_state.df_main)})")
-            
-            res = extract_logic(driver, p, n, d)
-            res_list.append(res)
-            prog.progress((i + 1) / len(st.session_state.df_main))
+            res = run_search(driver, str(row['Passport Number']), str(row['Nationality']), str(row['Date of Birth']))
+            results.append(res)
+            prog.progress((i + 1) / len(st.session_state.df_data))
         
         if driver: driver.quit()
-        st.success(f"Complete! Time: {str(timedelta(seconds=int(time.time()-start_t)))}")
-        st.dataframe(pd.DataFrame(res_list))
+        st.dataframe(pd.DataFrame(results))
