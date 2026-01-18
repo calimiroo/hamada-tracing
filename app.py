@@ -7,159 +7,171 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
-from deep_translator import GoogleTranslator
 import re
 
-# --- 1. إعداد الصفحة والتصميم (UI) ---
-st.set_page_config(page_title="MOHRE Tracer", layout="wide")
+# --- 1. Page Config & Professional Styling ---
+st.set_page_config(page_title="MOHRE Dashboard", layout="wide")
 
-# تخصيص الألوان باستخدام CSS
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
-    .found-row { background-color: #d4edda !important; } /* أخضر فاتح */
-    .notfound-row { background-color: #f8d7da !important; } /* أحمر فاتح */
+    .main { background-color: #fdfdfd; }
+    div.stButton > button:first-child {
+        background-color: #007bff;
+        color: white;
+        height: 3em;
+        border-radius: 5px;
+    }
+    /* Fixed Table Colors */
+    .stDataFrame [data-testid="stTable"] td {
+        border: 1px solid #f0f0f0;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ HAMADA TRACING - PROFESSIONAL MODE")
+st.title("📊 HAMADA TRACING SYSTEM")
 
-# --- 2. إدارة جلسة العمل (Session State) ---
+# --- 2. Session Management ---
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
-if 'batch_results' not in st.session_state:
-    st.session_state.batch_results = []
+if 'batch_data' not in st.session_state:
+    st.session_state.batch_data = []
 
-# قائمة الجنسيات الكاملة
-countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Mauritania", "Mauritius", "Mexico", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "Norway", "Oman", "Pakistan", "Palestine", "Panama", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Somalia", "South Africa", "South Korea", "Spain", "Sri Lanka", "Sudan", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Tunisia", "Turkey", "Turkmenistan", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
+# Full Nationality List
+countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-# --- 3. نظام الألوان (Styling Function) ---
-def style_dataframe(df):
-    def apply_color(row):
-        if row['Status'] == 'Found':
-            return ['background-color: #d4edda'] * len(row) # أخضر فاتح
-        return ['background-color: #f8d7da'] * len(row)    # أحمر فاتح
-    return df.style.apply(apply_color, axis=1)
-
-# --- 4. وظيفة المتصفح (Cloud Compatible) ---
+# --- 3. Browser Setup (Headless for Cloud) ---
 def get_driver():
     options = uc.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    driver = uc.Chrome(options=options, headless=True, use_subprocess=True)
-    return driver
+    options.add_argument("--window-size=1280,720")
+    return uc.Chrome(options=options, headless=True, use_subprocess=True)
 
-# --- 5. منطق البحث الاستخراجي ---
-def extract_data(passport, nationality, dob_str):
+# --- 4. Coloring Logic ---
+def color_rows(row):
+    color = '#d4edda' if row['Status'] == 'Found' else '#f8d7da'
+    return [f'background-color: {color}'] * len(row)
+
+# --- 5. Extraction Logic ---
+def run_search(passport, nationality, dob):
     driver = None
     try:
         driver = get_driver()
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         
-        wait = WebDriverWait(driver, 15)
-        # إدخال البيانات
+        wait = WebDriverWait(driver, 10)
+        # Fill Passport
         wait.until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
         
+        # Nationality Selection
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(1)
+        time.sleep(0.5)
         search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
         search_box.send_keys(nationality)
-        time.sleep(1)
-        
+        time.sleep(0.8)
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
         
-        dob_input = driver.find_element(By.ID, "txtBirthDate")
-        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_input)
-        dob_input.clear()
-        dob_input.send_keys(dob_str)
+        # Date of Birth
+        dob_field = driver.find_element(By.ID, "txtBirthDate")
+        driver.execute_script("arguments[0].removeAttribute('readonly');", dob_field)
+        dob_field.clear()
+        dob_field.send_keys(dob)
         
+        # Submit
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(5)
+        time.sleep(4)
         
-        # قراءة النتائج
-        def get_val(label):
-            try:
-                path = f"//span[contains(text(), '{label}')]/following::span[1]"
-                return driver.find_element(By.XPATH, path).text.strip()
-            except: return "N/A"
-
-        card = get_val("Card Number")
-        if card == "N/A": return None
-
-        return {
-            "Passport Number": passport,
-            "Nationality": nationality,
-            "Date of Birth": dob_str,
-            "Card Number": card,
-            "Job Description": get_val("Job Description"),
-            "Total Salary": get_val("Total Salary"),
-            "Status": "Found"
-        }
+        # Extract Results
+        try:
+            card_no = driver.find_element(By.XPATH, "//span[contains(text(), 'Card Number')]/following::span[1]").text.strip()
+            if not card_no: return None
+            
+            job = driver.find_element(By.XPATH, "//span[contains(text(), 'Job Description')]/following::span[1]").text.strip()
+            salary = driver.find_element(By.XPATH, "//span[contains(text(), 'Total Salary')]/following::span[1]").text.strip()
+            
+            return {
+                "Passport": passport, "Nationality": nationality, "DOB": dob,
+                "Card Number": card_no, "Job": job, "Salary": salary, "Status": "Found"
+            }
+        except: return None
     except: return None
     finally:
         if driver: driver.quit()
 
-# --- 6. تسجيل الدخول والواجهة ---
+# --- 6. Security & UI ---
 if not st.session_state.authenticated:
-    with st.form("login"):
-        pwd = st.text_input("Password", type="password")
-        if st.form_submit_button("Login") and pwd == "Bilkish":
+    with st.container():
+        st.subheader("System Lock")
+        pwd = st.text_input("Enter Key", type="password")
+        if st.button("Unlock") and pwd == "Bilkish":
             st.session_state.authenticated = True
             st.rerun()
     st.stop()
 
-tab1, tab2 = st.tabs(["البحث الفردي", "رفع ملف Excel"])
+# Tabs
+t1, t2 = st.tabs(["Single Search", "Batch Processing"])
 
-with tab1:
-    c1, c2, c3 = st.columns(3)
-    p_num = c1.text_input("رقم الجواز")
-    p_nat = c2.selectbox("الجنسية", countries_list)
-    p_dob = c3.date_input("تاريخ الميلاد", value=None)
+with t1:
+    col1, col2, col3 = st.columns(3)
+    p_in = col1.text_input("Passport Number")
+    n_in = col2.selectbox("Nationality", countries_list)
+    d_in = col3.date_input("Date of Birth", value=None, min_value=datetime(1940,1,1))
     
-    if st.button("بحث الآن", type="primary"):
-        if p_num and p_dob and p_nat != "Select Nationality":
-            with st.spinner("جاري البحث..."):
-                res = extract_data(p_num, p_nat, p_dob.strftime("%d/%m/%Y"))
+    if st.button("Run Search"):
+        if p_in and d_in:
+            with st.spinner("Processing..."):
+                res = run_search(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res:
-                    st.success("تم العثور على البيانات")
-                    st.table(style_dataframe(pd.DataFrame([res])))
+                    st.success("Record Found")
+                    st.dataframe(pd.DataFrame([res]).style.apply(color_rows, axis=1))
                 else:
-                    st.error("لم يتم العثور على بيانات")
+                    st.error("No Record Found")
 
-with tab2:
-    file = st.file_uploader("ارفع ملف الإكسيل", type=["xlsx"])
-    if file:
-        df_input = pd.read_excel(file)
-        if st.button("▶️ بدء المعالجة الجماعية"):
-            st.session_state.batch_results = []
-            bar = st.progress(0)
-            status = st.empty()
+with t2:
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+    if uploaded_file:
+        df_input = pd.read_excel(uploaded_file)
+        st.info(f"Loaded {len(df_input)} records.")
+        
+        if st.button("Start Batch Operation"):
+            st.session_state.batch_data = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            table_placeholder = st.empty() # Placeholder for live updates
             
-            for i, row in df_input.iterrows():
-                p = str(row.get('Passport Number', ''))
-                n = str(row.get('Nationality', ''))
-                # معالجة التاريخ الذكية
+            for idx, row in df_input.iterrows():
+                p_val = str(row.get('Passport Number', '')).strip()
+                n_val = str(row.get('Nationality', '')).strip()
                 d_raw = row.get('Date of Birth')
-                d = pd.to_datetime(d_raw).strftime('%d/%m/%Y') if not isinstance(d_raw, str) else d_raw
                 
-                status.text(f"جاري فحص: {p}")
-                res = extract_data(p, n, d)
+                # Dynamic Date Handling
+                try:
+                    d_val = pd.to_datetime(d_raw).strftime('%d/%m/%Y') if not isinstance(d_raw, str) else d_raw
+                except: d_val = str(d_raw)
                 
-                if res:
-                    st.session_state.batch_results.append(res)
+                status_text.write(f"🔍 Searching: {p_val} ({idx+1}/{len(df_input)})")
+                
+                result = run_search(p_val, n_val, d_val)
+                
+                if result:
+                    st.session_state.batch_data.append(result)
                 else:
-                    st.session_state.batch_results.append({
-                        "Passport Number": p, "Nationality": n, "Date of Birth": d, 
-                        "Status": "Not Found", "Card Number": "N/A", "Job Description": "N/A", "Total Salary": "N/A"
+                    st.session_state.batch_data.append({
+                        "Passport": p_val, "Nationality": n_val, "DOB": d_val,
+                        "Card Number": "N/A", "Job": "N/A", "Salary": "N/A", "Status": "Not Found"
                     })
-                bar.progress((i+1)/len(df_input))
+                
+                # LIVE UPDATE: Update table on every loop
+                current_df = pd.DataFrame(st.session_state.batch_data)
+                table_placeholder.dataframe(current_df.style.apply(color_rows, axis=1), use_container_width=True)
+                
+                progress_bar.progress((idx + 1) / len(df_input))
             
-            final_df = pd.DataFrame(st.session_state.batch_results)
-            st.dataframe(style_dataframe(final_df), use_container_width=True)
+            status_text.success("Batch Completed!")
             
-            # زر التحميل
+            # Final Download
+            final_df = pd.DataFrame(st.session_state.batch_data)
             csv = final_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 تحميل النتائج كـ CSV", csv, "results.csv", "text/csv")
+            st.download_button("📥 Download Final Report", csv, "batch_report.csv", "text/csv")
