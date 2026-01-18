@@ -1,48 +1,57 @@
-# deep_search_addon.py
+# deep_search_inline.py
 #
-# وحدة البحث العميق (Deep Search) - نسخة محسّنة
-# هذه الوحدة تُضاف كإضافة بسيطة دون تعديل الستايل الأصلي أو الوظائف الأساسية
-# الخطأ المصحح: استبدال st.experimental_rerun() بـ st.rerun() (متوافق مع Streamlit >= 1.27)
+# كود البحث العميق - نسخة مدمجة مباشرة (Inline)
+# هذا الملف يحتوي على جميع الكود المطلوب ويمكن نسخه مباشرة في app.py
+# بدون الحاجة لاستيراد ملفات خارجية
 #
-# المتطلبات:
-# - streamlit >= 1.27
-# - pandas
-# - selenium
-# - undetected-chromedriver
+# خطوات الاستخدام:
+# 1. انسخ جميع الكود أدناه
+# 2. الصقه في app.py بعد الاستيرادات الأساسية
+# 3. استدعِ show_deep_search_buttons(df) بعد عرض النتائج الأولية
 
 import streamlit as st
 import pandas as pd
 import time
-import undetected_chromedriver as uc
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-# --- 1. تهيئة Selenium Driver ---
+# --- محاولة استيراد Selenium (مع معالجة الأخطاء) ---
+try:
+    import undetected_chromedriver as uc
+    from selenium.webdriver.remote.webdriver import WebDriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    SELENIUM_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"Selenium not available: {e}. Deep Search feature will be disabled.")
+    SELENIUM_AVAILABLE = False
 
-def get_selenium_driver() -> WebDriver:
+# --- 1. تهيئة Selenium Driver (آمنة) ---
+
+def get_selenium_driver():
     """
     Initializes or retrieves an undetected_chromedriver instance.
-    Configured for Streamlit Cloud compatibility.
+    Returns None if Selenium is not available.
     """
-    if 'selenium_driver' not in st.session_state:
-        options = uc.ChromeOptions()
-        options.add_argument('--headless=new')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
+    if not SELENIUM_AVAILABLE:
+        return None
         
+    if 'selenium_driver' not in st.session_state:
         try:
+            options = uc.ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            
             driver = uc.Chrome(options=options)
             st.session_state['selenium_driver'] = driver
         except Exception as e:
             st.error(f"Failed to initialize Selenium driver: {e}")
             return None
             
-    return st.session_state['selenium_driver']
+    return st.session_state.get('selenium_driver')
 
 # --- 2. منطق البحث العميق (Core Logic) ---
 
@@ -52,11 +61,14 @@ CAPTCHA_SOLVER_JS = """
     document.getElementById('InputCaptcha').value = solution;
 """
 
-def perform_deep_search_core(driver: WebDriver, card_number: str) -> dict | None:
+def perform_deep_search_core(driver, card_number: str):
     """
     Core deep search logic for a single card number.
     Returns extracted data dict or None on failure.
     """
+    if driver is None:
+        return None
+        
     URL = "https://inquiry.mohre.gov.ae/"
     MAX_RETRIES = 3
     
@@ -137,6 +149,10 @@ def update_dataframe_with_deep_search(row_index: int, additional_data: dict):
 
 def perform_single_deep_search(row_index: int, card_number: str):
     """Performs a single deep search for one card number."""
+    if not SELENIUM_AVAILABLE:
+        st.error("Selenium is not available. Please install: pip install undetected-chromedriver selenium")
+        return False
+        
     driver = get_selenium_driver()
     if driver is None:
         st.error("Failed to initialize Selenium driver.")
@@ -155,6 +171,10 @@ def perform_single_deep_search(row_index: int, card_number: str):
 
 def perform_batch_deep_search():
     """Performs batch deep search for all unenriched 'Found' records."""
+    if not SELENIUM_AVAILABLE:
+        st.error("Selenium is not available. Please install: pip install undetected-chromedriver selenium")
+        return
+        
     df = st.session_state.results_df
     
     # Ensure new columns exist
@@ -202,6 +222,11 @@ def show_deep_search_buttons(df: pd.DataFrame):
     Shows Deep Search buttons ONLY after the first phase is complete.
     This function should be called AFTER displaying the main results table.
     """
+    # Check if Selenium is available
+    if not SELENIUM_AVAILABLE:
+        st.info("Deep Search feature requires Selenium. Install: pip install undetected-chromedriver selenium")
+        return
+    
     # Check if first phase is complete (i.e., results_df has data)
     if df is None or df.empty:
         return
@@ -220,7 +245,7 @@ def show_deep_search_buttons(df: pd.DataFrame):
     
     # Display Deep Search section
     st.markdown("---")
-    st.subheader("Deep Search - Enrich Data from MOHRE Portal")
+    st.subheader("🔍 Deep Search - Enrich Data from MOHRE Portal")
     
     # Batch search button
     col1, col2 = st.columns([2, 1])
@@ -229,7 +254,7 @@ def show_deep_search_buttons(df: pd.DataFrame):
     with col2:
         if st.button("Start Batch Deep Search", key="batch_deep_search_btn"):
             perform_batch_deep_search()
-            st.rerun()  # Fixed: using st.rerun() instead of st.experimental_rerun()
+            st.rerun()
     
     # Single row search buttons
     st.markdown("---")
@@ -249,4 +274,8 @@ def show_deep_search_buttons(df: pd.DataFrame):
             key=f"deep_search_btn_{index}"
         ):
             perform_single_deep_search(index, card_number)
-            st.rerun()  # Fixed: using st.rerun() instead of st.experimental_rerun()
+            st.rerun()
+
+# --- مثال على الاستخدام ---
+# في app.py الخاص بك، بعد عرض النتائج الأولية، أضف هذا السطر:
+# show_deep_search_buttons(st.session_state.results_df)
