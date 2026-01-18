@@ -1,17 +1,10 @@
-It seems there's confusion with the file content. Please create a new file and paste only this exact code:
-
-```python
 import streamlit as st
 import pandas as pd
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime, timedelta
 from deep_translator import GoogleTranslator
-import re
 
 # --- إعداد الصفحة ---
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
@@ -26,13 +19,9 @@ if 'batch_results' not in st.session_state:
     st.session_state['batch_results'] = []
 if 'start_time_ref' not in st.session_state:
     st.session_state['start_time_ref'] = None
-if 'deep_search_performed' not in st.session_state:
-    st.session_state['deep_search_performed'] = False
-if 'deep_search_results' not in st.session_state:
-    st.session_state['deep_search_results'] = {}
 
 # قائمة الجنسيات
-countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Bruni", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
+countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
 # --- تسجيل الدخول ---
 if not st.session_state['authenticated']:
@@ -112,89 +101,6 @@ def extract_data(passport, nationality, dob_str):
     except: return None
     finally: driver.quit()
 
-def perform_deep_search(card_number):
-    driver = get_driver()
-    try:
-        # Go to the MOHRE inquiry website
-        driver.get("https://inquiry.mohre.gov.ae/")
-        time.sleep(3)
-        
-        # Select "Electronic Work Permit Information" from dropdown
-        service_dropdown = Select(driver.find_element(By.NAME, "ctl00$ContentPlaceHolder1$ddlServices"))
-        service_dropdown.select_by_visible_text("Electronic Work Permit Information")
-        time.sleep(2)
-        
-        # Fill in the card number
-        person_code_input = driver.find_element(By.ID, "ContentPlaceHolder1_txtPersonCode")
-        person_code_input.send_keys(card_number)
-        
-        # Execute the captcha bypass script
-        captcha_script = """
-        (function(){
-            try{
-                const tryFill=()=>{
-                    const code=Array.from(document.querySelectorAll('div,span,b,strong')).map(el=>el.innerText.trim()).find(txt=>/^\\d{4}$/.test(txt));
-                    const input=Array.from(document.querySelectorAll('input')).find(i=>i.placeholder.includes("التحقق")||i.placeholder.toLowerCase().includes("captcha"));
-                    if(code&&input){
-                        input.value=code;
-                        input.dispatchEvent(new Event('input',{bubbles:true}));
-                    }else{
-                        setTimeout(tryFill,500);
-                    }
-                };
-                tryFill();
-            }catch(e){
-                console.error('Error:',e);
-            }
-        })();
-        """
-        driver.execute_script(captcha_script)
-        time.sleep(2)
-        
-        # Click search button
-        search_btn = driver.find_element(By.ID, "ContentPlaceHolder1_btnSearch")
-        search_btn.click()
-        time.sleep(5)
-        
-        # Extract additional data
-        def get_additional_value(label):
-            try:
-                elements = driver.find_elements(By.XPATH, f"//td[contains(text(), '{label}')]/following-sibling::td")
-                if elements:
-                    return elements[0].text.strip()
-                return 'Not Found'
-            except: return 'Not Found'
-        
-        # Try different selectors for the new data
-        try:
-            company_name = driver.find_element(By.ID, "ContentPlaceHolder1_lblCompanyName").text if driver.find_elements(By.ID, "ContentPlaceHolder1_lblCompanyName") else 'Not Found'
-            company_code = driver.find_element(By.ID, "ContentPlaceHolder1_lblCompanyNo").text if driver.find_elements(By.ID, "ContentPlaceHolder1_lblCompanyNo") else 'Not Found'
-            customer_name = driver.find_element(By.ID, "ContentPlaceHolder1_lblName").text if driver.find_elements(By.ID, "ContentPlaceHolder1_lblName") else 'Not Found'
-            job_title = driver.find_element(By.ID, "ContentPlaceHolder1_lblJobTitle").text if driver.find_elements(By.ID, "ContentPlaceHolder1_lblJobTitle") else 'Not Found'
-        except:
-            # Alternative extraction method
-            company_name = get_additional_value("Company Name")
-            company_code = get_additional_value("Company No")
-            customer_name = get_additional_value("Name")
-            job_title = get_additional_value("Job Title")
-        
-        return {
-            "Company Name": company_name,
-            "Company Code": company_code,
-            "Customer Name": customer_name,
-            "Job Title": job_title
-        }
-    except Exception as e:
-        print(f"Deep search error for card {card_number}: {str(e)}")
-        return {
-            "Company Name": "Not Found",
-            "Company Code": "Not Found",
-            "Customer Name": "Not Found",
-            "Job Title": "Not Found"
-        }
-    finally:
-        driver.quit()
-
 # --- واجهة المستخدم ---
 tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
 
@@ -209,21 +115,8 @@ with tab1:
         if p_in and n_in != "Select Nationality" and d_in:
             with st.spinner("Searching..."):
                 res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
-                if res:
-                    st.table(pd.DataFrame([res]))
-                    
-                    # Add deep search button for single result
-                    if st.button("🔍 Deep Search"):
-                        with st.spinner("Performing Deep Search..."):
-                            deep_result = perform_deep_search(res["Card Number"])
-                            
-                            # Update the original result with deep search data
-                            res.update(deep_result)
-                            
-                            st.write("Updated Result with Deep Search Data:")
-                            st.table(pd.DataFrame([res]))
-                else: 
-                    st.error("No data found.")
+                if res: st.table(pd.DataFrame([res]))
+                else: st.error("No data found.")
 
 with tab2:
     st.subheader("Batch Processing Control")
@@ -303,53 +196,5 @@ with tab2:
 
             if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
                 st.success(f"Batch Completed! Total Time: {format_time(time.time() - st.session_state.start_time_ref)}")
-                
-                # Add deep search button for batch results
-                if st.button("🔍 Perform Deep Search on All Found Records"):
-                    with st.spinner("Performing Deep Search on all Found records..."):
-                        updated_results = []
-                        for idx, result in enumerate(st.session_state.batch_results):
-                            if result.get("Status") == "Found" and result.get("Card Number") != "N/A":
-                                deep_result = perform_deep_search(result["Card Number"])
-                                # Update the result with deep search data
-                                result.update(deep_result)
-                            else:
-                                # Add default values for non-found records
-                                result.update({
-                                    "Company Name": "N/A",
-                                    "Company Code": "N/A",
-                                    "Customer Name": "N/A",
-                                    "Job Title": "N/A"
-                                })
-                            updated_results.append(result)
-                        
-                        st.session_state.batch_results = updated_results
-                        st.session_state.deep_search_performed = True
-                        
-                        # Show updated table
-                        updated_df = pd.DataFrame(st.session_state.batch_results)
-                        styled_updated_df = updated_df.style.map(color_status, subset=['Status'])
-                        st.dataframe(styled_updated_df, use_container_width=True)
-                        
-                        # Provide download button for full report
-                        st.download_button(
-                            "Download Full Report with Deep Search (CSV)", 
-                            updated_df.to_csv(index=False).encode('utf-8'), 
-                            "full_results_with_deep_search.csv"
-                        )
-
-                # Original download button still available
                 final_df = pd.DataFrame(st.session_state.batch_results)
-                st.download_button(
-                    "Download Basic Results (CSV)", 
-                    final_df.to_csv(index=False).encode('utf-8'), 
-                    "basic_results.csv"
-                )
-
-# Display batch results table if any exist
-if st.session_state['batch_results']:
-    st.subheader("Current Batch Results")
-    current_df = pd.DataFrame(st.session_state.batch_results)
-    styled_df = current_df.style.map(color_status, subset=['Status'])
-    st.dataframe(styled_df, use_container_width=True)
-```
+                st.download_button("Download Full Report (CSV)", final_df.to_csv(index=False).encode('utf-8'), "full_results.csv")
