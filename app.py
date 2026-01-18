@@ -1,4 +1,4 @@
-I see the issue. You need to remove the initial markdown formatting. Here's the corrected code:
+I understand the issue. Please copy only the code starting from `import streamlit as st` onwards, without any introductory text. Here's the clean version:
 
 ```python
 import streamlit as st
