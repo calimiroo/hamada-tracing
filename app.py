@@ -9,270 +9,157 @@ from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 from deep_translator import GoogleTranslator
 import re
-import os
 
-# --- إعداد الصفحة ---
+# --- 1. إعداد الصفحة والتصميم (UI) ---
 st.set_page_config(page_title="MOHRE Tracer", layout="wide")
-st.title("HAMADA TRACING - CLOUD MODE")
 
-# --- إدارة جلسة العمل ---
+# تخصيص الألوان باستخدام CSS
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
+    .found-row { background-color: #d4edda !important; } /* أخضر فاتح */
+    .notfound-row { background-color: #f8d7da !important; } /* أحمر فاتح */
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🛡️ HAMADA TRACING - PROFESSIONAL MODE")
+
+# --- 2. إدارة جلسة العمل (Session State) ---
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
-if 'run_state' not in st.session_state:
-    st.session_state.run_state = 'stopped'
 if 'batch_results' not in st.session_state:
     st.session_state.batch_results = []
-if 'single_result' not in st.session_state:
-    st.session_state.single_result = None
-if 'show_deep_button' not in st.session_state:
-    st.session_state.show_deep_button = False
 
-# قائمة الجنسيات
-countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
+# قائمة الجنسيات الكاملة
+countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Mauritania", "Mauritius", "Mexico", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "Norway", "Oman", "Pakistan", "Palestine", "Panama", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Somalia", "South Africa", "South Korea", "Spain", "Sri Lanka", "Sudan", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Tunisia", "Turkey", "Turkmenistan", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
-# --- تسجيل الدخول ---
-if not st.session_state.authenticated:
-    with st.form("login_form"):
-        st.subheader("Protected Access")
-        pwd_input = st.text_input("Enter Password", type="password")
-        if st.form_submit_button("Login"):
-            if pwd_input == "Bilkish":
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Incorrect Password.")
-    st.stop()
+# --- 3. نظام الألوان (Styling Function) ---
+def style_dataframe(df):
+    def apply_color(row):
+        if row['Status'] == 'Found':
+            return ['background-color: #d4edda'] * len(row) # أخضر فاتح
+        return ['background-color: #f8d7da'] * len(row)    # أحمر فاتح
+    return df.style.apply(apply_color, axis=1)
 
-# --- وظيفة المتصفح المصححة للكلاود ---
+# --- 4. وظيفة المتصفح (Cloud Compatible) ---
 def get_driver():
     options = uc.ChromeOptions()
-    # أهم الإعدادات لتشغيل الكود على السيرفرات
-    options.add_argument("--headless=new")  # وضع التخفي الجديد والأكثر ثباتاً
-    options.add_argument("--no-sandbox")   # ضروري جداً لبيئة اللينكس
-    options.add_argument("--disable-dev-shm-usage") # يمنع استهلاك الذاكرة العشوائية بشكل خاطئ
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    
-    # محاولة التشغيل مع معالجة الأخطاء
-    try:
-        driver = uc.Chrome(options=options, headless=True, use_subprocess=True, version_main=None)
-    except Exception as e:
-        # محاولة احتياطية في حالة فشل النسخة التلقائية
-        st.warning("Retrying driver initialization...")
-        driver = uc.Chrome(options=options, headless=True)
-        
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    driver = uc.Chrome(options=options, headless=True, use_subprocess=True)
     return driver
 
-def color_status(val):
-    if val == 'Found':
-        return 'background-color: #28a745; color: white'
-    else:
-        return 'background-color: #dc3545; color: white'
-
-# --- البحث الأساسي ---
+# --- 5. منطق البحث الاستخراجي ---
 def extract_data(passport, nationality, dob_str):
     driver = None
     try:
         driver = get_driver()
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
         
-        # إدخال رقم الجواز
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
+        wait = WebDriverWait(driver, 15)
+        # إدخال البيانات
+        wait.until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
         
-        # اختيار الجنسية
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
         time.sleep(1)
         search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
         search_box.send_keys(nationality)
         time.sleep(1)
-        items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
-        if items:
-            items[0].click()
         
-        # إدخال تاريخ الميلاد
+        items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
+        if items: items[0].click()
+        
         dob_input = driver.find_element(By.ID, "txtBirthDate")
         driver.execute_script("arguments[0].removeAttribute('readonly');", dob_input)
         dob_input.clear()
         dob_input.send_keys(dob_str)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_input)
         
-        # النقر على زر البحث
         driver.find_element(By.ID, "btnSubmit").click()
+        time.sleep(5)
         
-        # انتظار النتائج
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Card Number')]"))
-            )
-        except:
-            return None # لم يتم العثور على نتائج
-        
-        # استخراج البيانات
-        def get_value(label):
+        # قراءة النتائج
+        def get_val(label):
             try:
-                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
-                element = driver.find_element(By.XPATH, xpath)
-                return element.text.strip() if element.text.strip() else 'N/A'
-            except:
-                return 'N/A'
-        
-        card_num = get_value("Card Number")
-        if card_num == 'N/A' or not card_num:
-            return None
-        
-        # ترجمة الوظيفة
-        job_desc = get_value("Job Description")
-        try:
-            if job_desc != 'N/A' and job_desc:
-                job_desc = GoogleTranslator(source='auto', target='en').translate(job_desc)
-        except:
-            pass
-        
+                path = f"//span[contains(text(), '{label}')]/following::span[1]"
+                return driver.find_element(By.XPATH, path).text.strip()
+            except: return "N/A"
+
+        card = get_val("Card Number")
+        if card == "N/A": return None
+
         return {
             "Passport Number": passport,
             "Nationality": nationality,
             "Date of Birth": dob_str,
-            "Job Description": job_desc,
-            "Card Number": card_num,
-            "Card Issue": get_value("Card Issue"),
-            "Card Expiry": get_value("Card Expiry"),
-            "Basic Salary": get_value("Basic Salary"),
-            "Total Salary": get_value("Total Salary"),
-            "Status": "Found",
-            "Company Name": "",
-            "Company Code": "",
-            "Client Name": "",
-            "Profession": ""
+            "Card Number": card,
+            "Job Description": get_val("Job Description"),
+            "Total Salary": get_val("Total Salary"),
+            "Status": "Found"
         }
-    except Exception as e:
-        # تسجيل الخطأ في الكونسول فقط لتجنب إرباك المستخدم
-        print(f"Basic Search Error: {str(e)}")
-        return None
+    except: return None
     finally:
-        if driver:
-            try:
-                driver.quit()
-            except:
-                pass
+        if driver: driver.quit()
 
-# --- البحث العميق (Deep Search) ---
-def deep_search(card_number):
-    driver = None
-    result_data = {
-        "Company Name": "Not Found",
-        "Company Code": "Not Found", 
-        "Client Name": "Not Found",
-        "Profession": "Not Found"
-    }
+# --- 6. تسجيل الدخول والواجهة ---
+if not st.session_state.authenticated:
+    with st.form("login"):
+        pwd = st.text_input("Password", type="password")
+        if st.form_submit_button("Login") and pwd == "Bilkish":
+            st.session_state.authenticated = True
+            st.rerun()
+    st.stop()
+
+tab1, tab2 = st.tabs(["البحث الفردي", "رفع ملف Excel"])
+
+with tab1:
+    c1, c2, c3 = st.columns(3)
+    p_num = c1.text_input("رقم الجواز")
+    p_nat = c2.selectbox("الجنسية", countries_list)
+    p_dob = c3.date_input("تاريخ الميلاد", value=None)
     
-    try:
-        driver = get_driver()
-        driver.get("https://inquiry.mohre.gov.ae/")
-        
-        wait = WebDriverWait(driver, 20)
-        
-        # 1. اختيار Electronic Work Permit Information
-        try:
-            select_element = wait.until(EC.presence_of_element_located((By.TAG_NAME, "select")))
-            select = Select(select_element)
-            select.select_by_visible_text("Electronic Work Permit Information")
-            time.sleep(1)
-        except:
-            driver.execute_script("""
-                var options = document.querySelectorAll('option');
-                for(var i=0; i<options.length; i++) {
-                    if(options[i].text.includes('Electronic Work Permit') || options[i].text.includes('تصريح العمل الإلكتروني')) {
-                        options[i].parentElement.value = options[i].value;
-                        options[i].parentElement.dispatchEvent(new Event('change'));
-                        break;
-                    }
-                }
-            """)
-        
-        time.sleep(2)
+    if st.button("بحث الآن", type="primary"):
+        if p_num and p_dob and p_nat != "Select Nationality":
+            with st.spinner("جاري البحث..."):
+                res = extract_data(p_num, p_nat, p_dob.strftime("%d/%m/%Y"))
+                if res:
+                    st.success("تم العثور على البيانات")
+                    st.table(style_dataframe(pd.DataFrame([res])))
+                else:
+                    st.error("لم يتم العثور على بيانات")
 
-        # 2. إدخال رقم البطاقة
-        card_input = None
-        try:
-            card_input = driver.find_element(By.XPATH, "//input[@id='CardNo' or contains(@placeholder, 'Card') or contains(@placeholder, 'بطاقة')]")
-        except:
-            inputs = driver.find_elements(By.TAG_NAME, "input")
-            for inp in inputs:
-                if inp.is_displayed() and inp.get_attribute("type") == "text" and "captcha" not in str(inp.get_attribute("id")).lower():
-                    card_input = inp
-                    break
-        
-        if card_input:
-            card_input.clear()
-            card_input.send_keys(card_number)
-        else:
-            return result_data
-
-        # 3. فك الكابتشا
-        captcha_script = """
-        (function(){
-            try{
-                const tryFill=()=>{
-                    const code=Array.from(document.querySelectorAll('div,span,b,strong')).map(el=>el.innerText.trim()).find(txt=>/^\\d{4}$/.test(txt));
-                    const input=Array.from(document.querySelectorAll('input')).find(i=>(i.placeholder && (i.placeholder.includes("التحقق")||i.placeholder.toLowerCase().includes("captcha"))) || (i.id && i.id.toLowerCase().includes("captcha")));
-                    if(code&&input){
-                        input.value=code;
-                        input.dispatchEvent(new Event('input',{bubbles:true}));
-                        return true;
-                    }
-                    return false;
-                };
-                tryFill();
-            }catch(e){console.error('Error:',e);}
-        })();
-        """
-        driver.execute_script(captcha_script)
-        time.sleep(2)
-
-        # 4. الضغط على زر البحث
-        try:
-            search_btn = driver.find_element(By.XPATH, "//button[@type='submit' or contains(text(), 'Search') or contains(text(), 'بحث')] | //input[@type='submit']")
-            search_btn.click()
-        except:
-            driver.execute_script("document.forms[0].submit()")
+with tab2:
+    file = st.file_uploader("ارفع ملف الإكسيل", type=["xlsx"])
+    if file:
+        df_input = pd.read_excel(file)
+        if st.button("▶️ بدء المعالجة الجماعية"):
+            st.session_state.batch_results = []
+            bar = st.progress(0)
+            status = st.empty()
             
-        time.sleep(4)
-
-        # 5. استخراج البيانات
-        page_source = driver.page_source
-        
-        def extract_by_pattern(patterns, source):
-            for pattern in patterns:
-                match = re.search(pattern, source, re.IGNORECASE | re.DOTALL)
-                if match:
-                    clean_text = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-                    return clean_text
-            return "Not Found"
-
-        company_patterns = [r"Company Name.*?<td[^>]*>(.*?)</td>", r"اسم المنشأة.*?<td[^>]*>(.*?)</td>", r"Company Name\s*:\s*([^<\n]+)"]
-        code_patterns = [r"Company Code.*?<td[^>]*>(.*?)</td>", r"رقم المنشأة.*?<td[^>]*>(.*?)</td>", r"Company Code\s*:\s*(\d+)"]
-        client_patterns = [r"Person Name.*?<td[^>]*>(.*?)</td>", r"الاسم.*?<td[^>]*>(.*?)</td>", r"Name\s*:\s*([^<\n]+)"]
-        profession_patterns = [r"Profession.*?<td[^>]*>(.*?)</td>", r"المهنة.*?<td[^>]*>(.*?)</td>", r"Job\s*:\s*([^<\n]+)"]
-
-        try:
-            tds = driver.find_elements(By.TAG_NAME, "td")
-            for i, td in enumerate(tds):
-                txt = td.text.strip()
-                if "Company Name" in txt or "اسم المنشأة" in txt:
-                    if i+1 < len(tds): result_data["Company Name"] = tds[i+1].text.strip()
-                if "Company Code" in txt or "رقم المنشأة" in txt:
-                    if i+1 < len(tds): result_data["Company Code"] = tds[i+1].text.strip()
-                if "Person Name" in txt or "الاسم" in txt:
-                    if i+1 < len(tds): result_data["Client Name"] = tds[i+1].text.strip()
-                if "Profession" in txt or "المهنة" in txt:
-                    if i+1 < len(tds): result_data["Profession"] = tds[i+1].text.strip()
-        except:
-            pass
-
-        if result_data["Company Name"] == "Not Found": result_data["Company Name"] = extract_by_pattern(company_patterns, page_source)
-        if result_data["Company Code"] == "Not Found": result_data["Company Code"] = extract_by_pattern(code_patterns, page_source)
-        if result_data["Client Name"] == "Not Found": result_data["Client Name"] = extract_by_pattern(client_patterns, page_source)
-        if result_data["Profession"] == "Not Found": result_data["Profession"] = extract_by_pattern(profession_patterns, page_source)
+            for i, row in df_input.iterrows():
+                p = str(row.get('Passport Number', ''))
+                n = str(row.get('Nationality', ''))
+                # معالجة التاريخ الذكية
+                d_raw = row.get('Date of Birth')
+                d = pd.to_datetime(d_raw).strftime('%d/%m/%Y') if not isinstance(d_raw, str) else d_raw
+                
+                status.text(f"جاري فحص: {p}")
+                res = extract_data(p, n, d)
+                
+                if res:
+                    st.session_state.batch_results.append(res)
+                else:
+                    st.session_state.batch_results.append({
+                        "Passport Number": p, "Nationality": n, "Date of Birth": d, 
+                        "Status": "Not Found", "Card Number": "N/A", "Job Description": "N/A", "Total Salary": "N/A"
+                    })
+                bar.progress((i+1)/len(df_input))
             
-    except Exception as e:
-        print(f
+            final_df = pd.DataFrame(st.session_state.batch_results)
+            st.dataframe(style_dataframe(final_df), use_container_width=True)
+            
+            # زر التحميل
+            csv = final_df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 تحميل النتائج كـ CSV", csv, "results.csv", "text/csv")
