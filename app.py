@@ -11,8 +11,8 @@ from deep_translator import GoogleTranslator
 import re
 
 # --- إعداد الصفحة ---
-st.set_page_config(page_title="MOHRE Portal", layout="wide")
-st.title("HAMADA TRACING SITE TEST")
+st.set_page_config(page_title="MOHRE Debugger", layout="wide")
+st.title("HAMADA TRACING - VISUAL DEBUG MODE")
 
 # --- إدارة جلسة العمل ---
 if 'authenticated' not in st.session_state:
@@ -44,23 +44,16 @@ if not st.session_state.authenticated:
                 st.error("Incorrect Password.")
     st.stop()
 
-# --- وظيفة إعداد المتصفح (تم الإصلاح) ---
+# --- وظيفة إعداد المتصفح (تعديل لتشغيل الواجهة الرسومية) ---
 def get_driver():
     options = uc.ChromeOptions()
-    # إعدادات مهمة لتجنب الكراش على السيرفر
-    options.add_argument('--headless')  # نضعه هنا بدلاً من دالة الاستدعاء
+    # تم إزالة headless لكي ترى المتصفح
+    options.add_argument("--start-maximized") # تكبير النافذة لرؤية العناصر بوضوح
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument("--window-size=1920,1080")
     
-    # محاولة تشغيل المتصفح بأكثر طريقة آمنة
-    try:
-        driver = uc.Chrome(options=options, use_subprocess=True)
-    except Exception:
-        # محاولة بديلة في حالة الفشل الأول
-        driver = uc.Chrome(options=options)
-        
+    # headless=False هو المفتاح هنا
+    driver = uc.Chrome(options=options, headless=False, use_subprocess=True)
     return driver
 
 def color_status(val):
@@ -75,7 +68,7 @@ def extract_data(passport, nationality, dob_str):
     try:
         driver = get_driver()
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(3)
+        time.sleep(3) # وقت لكي ترى الصفحة تحمل
         
         # إدخال رقم الجواز
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
@@ -99,7 +92,9 @@ def extract_data(passport, nationality, dob_str):
         
         # النقر على زر البحث
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(5)
+        
+        # زيادة وقت الانتظار لكي ترى النتائج بنفسك
+        time.sleep(6)
         
         # استخراج البيانات
         def get_value(label):
@@ -139,7 +134,7 @@ def extract_data(passport, nationality, dob_str):
             "Profession": ""
         }
     except Exception as e:
-        # st.error(f"Basic Search Error: {str(e)}") # يمكن تفعيلها للتتبع
+        st.error(f"Basic Search Error: {str(e)}")
         return None
     finally:
         if driver:
@@ -148,7 +143,7 @@ def extract_data(passport, nationality, dob_str):
             except:
                 pass
 
-# --- البحث العميق (Deep Search) ---
+# --- البحث العميق (Deep Search) - هنا سترى المشكلة بوضوح ---
 def deep_search(card_number):
     driver = None
     result_data = {
@@ -162,19 +157,17 @@ def deep_search(card_number):
         driver = get_driver()
         driver.get("https://inquiry.mohre.gov.ae/")
         
-        wait = WebDriverWait(driver, 15)
+        wait = WebDriverWait(driver, 20) # زيادة وقت الانتظار
         
         # 1. اختيار Electronic Work Permit Information
-        # ننتظر تحميل القائمة ثم نختار
+        time.sleep(2) # راقب هنا هل سيختار القائمة؟
         try:
-            # البحث عن القائمة المنسدلة (قد يكون اسمها Service أو ID عشوائي)
-            # سنبحث عن ال select ونختار منها بالنص
             select_element = wait.until(EC.presence_of_element_located((By.TAG_NAME, "select")))
             select = Select(select_element)
             select.select_by_visible_text("Electronic Work Permit Information")
-            # أو باللغة العربية إذا كانت الواجهة عربية: "معلومات تصريح العمل الإلكتروني"
+            time.sleep(1)
         except Exception as e:
-            # محاولة أخرى إذا فشل الاختيار المباشر
+            # محاولة جافا سكريبت إذا فشل الاختيار العادي
             driver.execute_script("""
                 var options = document.querySelectorAll('option');
                 for(var i=0; i<options.length; i++) {
@@ -186,16 +179,14 @@ def deep_search(card_number):
                 }
             """)
         
-        time.sleep(3) # انتظار تحميل الحقول بعد الاختيار
+        time.sleep(3) # راقب ظهور حقل رقم البطاقة
 
         # 2. إدخال رقم البطاقة
-        # عادة يظهر حقل جديد بعد اختيار الخدمة
         card_input = None
         try:
-            # نبحث عن حقل يقبل الأرقام أو اسمه CardNo
+            # محاولة العثور على حقل الإدخال بعدة طرق
             card_input = driver.find_element(By.XPATH, "//input[@id='CardNo' or contains(@placeholder, 'Card') or contains(@placeholder, 'بطاقة')]")
         except:
-            # محاولة البحث عن أي Input ظاهر غير الكابتشا
             inputs = driver.find_elements(By.TAG_NAME, "input")
             for inp in inputs:
                 if inp.is_displayed() and inp.get_attribute("type") == "text" and "captcha" not in str(inp.get_attribute("id")).lower():
@@ -205,12 +196,13 @@ def deep_search(card_number):
         if card_input:
             card_input.clear()
             card_input.send_keys(card_number)
+            time.sleep(1) # تأكد من كتابة الرقم
         else:
-            return result_data # لم نجد حقل الإدخال
+            st.error("لم يتم العثور على حقل رقم البطاقة")
+            return result_data
 
-        time.sleep(1)
-
-        # 3. فك الكابتشا باستخدام كود الجافا سكريبت الخاص بك
+        # 3. فك الكابتشا
+        # الشفرة الخاصة بك
         captcha_script = """
         (function(){
             try{
@@ -224,19 +216,12 @@ def deep_search(card_number):
                     }
                     return false;
                 };
-                
-                // المحاولة عدة مرات للتأكد من تحميل العنصر
-                let attempts = 0;
-                const interval = setInterval(() => {
-                    if(tryFill() || attempts > 10) clearInterval(interval);
-                    attempts++;
-                }, 500);
-                
+                tryFill();
             }catch(e){console.error('Error:',e);}
         })();
         """
         driver.execute_script(captcha_script)
-        time.sleep(2)
+        time.sleep(4) # وقت كافي لتتأكد من أن الكابتشا كتبت
 
         # 4. الضغط على زر البحث
         try:
@@ -245,12 +230,11 @@ def deep_search(card_number):
         except:
             driver.execute_script("document.forms[0].submit()")
             
-        time.sleep(5) # انتظار النتيجة
+        time.sleep(6) # وقت كافي لرؤية النتائج
 
-        # 5. استخراج البيانات (اسم الشركة، كود الشركة، العميل، المهنة)
+        # 5. استخراج البيانات
         page_source = driver.page_source
         
-        # دوال مساعدة للاستخراج باستخدام Regex لضمان الدقة
         def extract_by_pattern(patterns, source):
             for pattern in patterns:
                 match = re.search(pattern, source, re.IGNORECASE | re.DOTALL)
@@ -259,35 +243,12 @@ def deep_search(card_number):
                     return clean_text
             return "Not Found"
 
-        # أنماط البحث (يمكن تعديلها حسب شكل الموقع)
-        company_patterns = [
-            r"Company Name.*?<td[^>]*>(.*?)</td>",
-            r"اسم المنشأة.*?<td[^>]*>(.*?)</td>",
-            r"Company Name\s*:\s*([^<\n]+)",
-        ]
-        
-        code_patterns = [
-            r"Company Code.*?<td[^>]*>(.*?)</td>",
-            r"رقم المنشأة.*?<td[^>]*>(.*?)</td>",
-            r"Company Code\s*:\s*(\d+)",
-        ]
-        
-        client_patterns = [
-            r"Person Name.*?<td[^>]*>(.*?)</td>",
-            r"الاسم.*?<td[^>]*>(.*?)</td>",
-            r"Name\s*:\s*([^<\n]+)",
-        ]
-        
-        profession_patterns = [
-            r"Profession.*?<td[^>]*>(.*?)</td>",
-            r"المهنة.*?<td[^>]*>(.*?)</td>",
-            r"Job\s*:\s*([^<\n]+)",
-        ]
+        company_patterns = [r"Company Name.*?<td[^>]*>(.*?)</td>", r"اسم المنشأة.*?<td[^>]*>(.*?)</td>", r"Company Name\s*:\s*([^<\n]+)"]
+        code_patterns = [r"Company Code.*?<td[^>]*>(.*?)</td>", r"رقم المنشأة.*?<td[^>]*>(.*?)</td>", r"Company Code\s*:\s*(\d+)"]
+        client_patterns = [r"Person Name.*?<td[^>]*>(.*?)</td>", r"الاسم.*?<td[^>]*>(.*?)</td>", r"Name\s*:\s*([^<\n]+)"]
+        profession_patterns = [r"Profession.*?<td[^>]*>(.*?)</td>", r"المهنة.*?<td[^>]*>(.*?)</td>", r"Job\s*:\s*([^<\n]+)"]
 
-        # محاولة استخراج القيم
-        # ملاحظة: سنحاول استخراج القيم من الجداول الشائعة في نتائج MOHRE
         try:
-            # نبحث عن العناصر مباشرة إذا أمكن
             tds = driver.find_elements(By.TAG_NAME, "td")
             for i, td in enumerate(tds):
                 txt = td.text.strip()
@@ -295,25 +256,20 @@ def deep_search(card_number):
                     if i+1 < len(tds): result_data["Company Name"] = tds[i+1].text.strip()
                 if "Company Code" in txt or "رقم المنشأة" in txt:
                     if i+1 < len(tds): result_data["Company Code"] = tds[i+1].text.strip()
-                if "Person Name" in txt or "الاسم" in txt: # أحيانا يكون Person Name بدلا من Client
+                if "Person Name" in txt or "الاسم" in txt:
                     if i+1 < len(tds): result_data["Client Name"] = tds[i+1].text.strip()
                 if "Profession" in txt or "المهنة" in txt:
                     if i+1 < len(tds): result_data["Profession"] = tds[i+1].text.strip()
         except:
             pass
 
-        # إذا لم نجد البيانات بالطريقة العادية، نستخدم Regex كخطة بديلة
-        if result_data["Company Name"] == "Not Found":
-            result_data["Company Name"] = extract_by_pattern(company_patterns, page_source)
-        if result_data["Company Code"] == "Not Found":
-            result_data["Company Code"] = extract_by_pattern(code_patterns, page_source)
-        if result_data["Client Name"] == "Not Found":
-            result_data["Client Name"] = extract_by_pattern(client_patterns, page_source)
-        if result_data["Profession"] == "Not Found":
-            result_data["Profession"] = extract_by_pattern(profession_patterns, page_source)
+        if result_data["Company Name"] == "Not Found": result_data["Company Name"] = extract_by_pattern(company_patterns, page_source)
+        if result_data["Company Code"] == "Not Found": result_data["Company Code"] = extract_by_pattern(code_patterns, page_source)
+        if result_data["Client Name"] == "Not Found": result_data["Client Name"] = extract_by_pattern(client_patterns, page_source)
+        if result_data["Profession"] == "Not Found": result_data["Profession"] = extract_by_pattern(profession_patterns, page_source)
             
     except Exception as e:
-        print(f"Deep Search Error: {e}")
+        st.error(f"Deep Search Error: {e}")
     finally:
         if driver:
             try:
@@ -337,11 +293,10 @@ with tab1:
     
     search_col, deep_col = st.columns(2)
     
-    # زر البحث الأساسي
     with search_col:
         if st.button("Search Now", type="primary", key="single_search"):
             if passport and nationality != "Select Nationality" and dob:
-                with st.spinner("Searching..."):
+                with st.spinner("Searching... Check popup window"):
                     result = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
                     if result:
                         st.session_state.single_result = result
@@ -350,30 +305,26 @@ with tab1:
                     else:
                         st.error("No data found")
                         st.session_state.single_result = None
-                        st.session_state.show_deep_button = False
             else:
                 st.error("Please fill all fields")
     
-    # عرض النتائج
     if st.session_state.single_result:
         df_result = pd.DataFrame([st.session_state.single_result])
         styled_df = df_result.style.map(color_status, subset=['Status'])
         st.table(styled_df)
         
-        # زر البحث العميق (يظهر فقط إذا كانت الحالة Found)
         if st.session_state.show_deep_button and st.session_state.single_result.get("Status") == "Found":
             with deep_col:
                 if st.button("🔍 Deep Search", type="secondary", key="single_deep"):
                     card_number = st.session_state.single_result.get("Card Number")
                     if card_number and card_number != "N/A":
-                        with st.spinner(f"Performing Deep Search for Card: {card_number}..."):
+                        with st.spinner(f"Opening browser for Card: {card_number}..."):
                             deep_data = deep_search(card_number)
-                            # تحديث البيانات
                             st.session_state.single_result.update(deep_data)
                             st.session_state.show_deep_button = False
                             st.rerun()
                     else:
-                        st.error("Cannot perform Deep Search: No Card Number found.")
+                        st.error("No Card Number found.")
 
 # === Tab 2: Batch Processing ===
 with tab2:
@@ -387,7 +338,6 @@ with tab2:
         
         col1, col2, col3 = st.columns(3)
         
-        # أزرار التحكم
         with col1:
             if st.button("▶️ Start Processing", type="primary", key="batch_start"):
                 st.session_state.run_state = 'running'
@@ -406,40 +356,30 @@ with tab2:
                 st.session_state.deep_completed = False
                 st.rerun()
         
-        # منطقة عرض النتائج
         results_area = st.empty()
         status_text = st.empty()
         progress_bar = st.progress(0)
         
-        # --- معالجة الدفعة (الخطوة 1: البحث الأساسي) ---
         if st.session_state.run_state == 'running':
-            
-            # عرض ما تم إنجازه حتى الآن
             if st.session_state.batch_results:
                 current_df = pd.DataFrame(st.session_state.batch_results)
                 results_area.dataframe(current_df.style.map(color_status, subset=['Status']), height=400)
 
             for i, row in df.iterrows():
                 if st.session_state.run_state != 'running': break
+                if i < len(st.session_state.batch_results): continue
                 
-                # تخطي ما تم معالجته
-                if i < len(st.session_state.batch_results):
-                    continue
-                
-                # قراءة البيانات
                 passport = str(row.get('Passport Number', '')).strip()
                 nationality = str(row.get('Nationality', '')).strip()
                 dob_raw = row.get('Date of Birth')
                 
-                # تنسيق التاريخ
                 try:
                     if isinstance(dob_raw, str): dob_formatted = dob_raw
                     else: dob_formatted = pd.to_datetime(dob_raw).strftime('%d/%m/%Y')
                 except: dob_formatted = str(dob_raw)
                 
-                status_text.info(f"Processing {i+1}/{len(df)}: {passport}")
+                status_text.info(f"Processing {i+1}/{len(df)}: {passport} - Watch Browser Window")
                 
-                # البحث
                 res = extract_data(passport, nationality, dob_formatted)
                 
                 if not res:
@@ -451,8 +391,6 @@ with tab2:
                     }
                 
                 st.session_state.batch_results.append(res)
-                
-                # تحديث العرض
                 current_df = pd.DataFrame(st.session_state.batch_results)
                 results_area.dataframe(current_df.style.map(color_status, subset=['Status']), height=400)
                 progress_bar.progress((i + 1) / len(df))
@@ -463,12 +401,10 @@ with tab2:
                 st.session_state.show_deep_button = True
                 st.rerun()
 
-        # --- بعد انتهاء البحث الأساسي ---
         if len(st.session_state.batch_results) > 0:
             final_df = pd.DataFrame(st.session_state.batch_results)
             results_area.dataframe(final_df.style.map(color_status, subset=['Status']), height=400)
             
-            # زر البحث العميق للدفعة
             found_count = len(final_df[final_df['Status'] == 'Found'])
             
             if st.session_state.show_deep_button and found_count > 0:
@@ -477,29 +413,21 @@ with tab2:
                     st.session_state.run_state = 'deep_searching'
                     st.rerun()
             
-            # --- معالجة البحث العميق ---
             if st.session_state.run_state == 'deep_searching':
                 progress_bar.progress(0)
-                
                 results_list = st.session_state.batch_results
                 total_found = len([x for x in results_list if x['Status'] == 'Found'])
                 processed_count = 0
                 
                 for idx, record in enumerate(results_list):
-                    if record['Status'] == 'Found' and record.get('Company Name') == "": # لم يتم البحث عنه بعمق بعد
+                    if record['Status'] == 'Found' and record.get('Company Name') == "":
                         card = record.get('Card Number')
                         if card and card != "N/A":
-                            status_text.info(f"Deep Searching Card: {card}...")
-                            
+                            status_text.info(f"Deep Searching Card: {card}... Check Browser")
                             deep_data = deep_search(card)
-                            
-                            # تحديث السجل
                             results_list[idx].update(deep_data)
                             st.session_state.batch_results = results_list
-                            
-                            # تحديث العرض
                             results_area.dataframe(pd.DataFrame(results_list).style.map(color_status, subset=['Status']), height=400)
-                            
                             processed_count += 1
                             progress_bar.progress(processed_count / total_found)
                 
@@ -509,12 +437,11 @@ with tab2:
                 st.success("Deep Search Completed!")
                 st.rerun()
 
-            # زر التحميل النهائي
             csv = final_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Final Results",
                 data=csv,
-                file_name="final_results.csv",
+                file_name="final_results_visual.csv",
                 mime="text/csv",
                 key="final_download"
             )
