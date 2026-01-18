@@ -56,6 +56,8 @@ def get_driver():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     return uc.Chrome(options=options, headless=True, use_subprocess=False)
 
 def color_status(val):
@@ -66,13 +68,13 @@ def extract_data(passport, nationality, dob_str):
     driver = get_driver()
     try:
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en ")
-        time.sleep(4)
+        time.sleep(5)
         driver.find_element(By.ID, "txtPassportNumber").send_keys(passport)
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
-        time.sleep(1)
+        time.sleep(2)
         search_box = driver.find_element(By.CSS_SELECTOR, "#ajaxSearchBoxModal .form-control")
         search_box.send_keys(nationality)
-        time.sleep(1)
+        time.sleep(2)
         items = driver.find_elements(By.CSS_SELECTOR, "#ajaxSearchBoxModal .items li a")
         if items: items[0].click()
        
@@ -82,10 +84,10 @@ def extract_data(passport, nationality, dob_str):
         dob_input.send_keys(dob_str)
         driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", dob_input)
         driver.find_element(By.ID, "btnSubmit").click()
-        time.sleep(8)
+        time.sleep(10)  # زيادة الوقت للانتظار
         def get_value(label):
             try:
-                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
+                xpath = f"//*[contains(text(), '{label}')]/following-sibling::*[1] | //*[contains(text(), '{label}')]/parent::*/following-sibling::*[1] | //td[contains(text(), '{label}')]/following-sibling::td[1]"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else 'Not Found'
             except: return 'Not Found'
@@ -103,36 +105,37 @@ def extract_data(passport, nationality, dob_str):
             "Client Name": "N/A",
             "Occupation": "N/A"
         }
-    except: return None
-    finally: driver.quit()
+    except Exception as e:
+        st.error(f"Error in extract_data: {str(e)}")
+        return None
+    finally:
+        driver.quit()
 
 def deep_search(card_number):
     driver = get_driver()
     try:
         driver.get("https://inquiry.mohre.gov.ae/")
-        time.sleep(4)
+        time.sleep(5)
 
-        # اختيار الخدمة "Electronic Work Permit Information"
+        # تغيير الخدمة إلى "Application Status" لدعم البحث بـ labour card number
         dropdown_button = driver.find_element(By.ID, "dropdownButton")
         dropdown_button.click()
-        time.sleep(1)
+        time.sleep(2)
         options = driver.find_elements(By.CSS_SELECTOR, "#optionsList li")
         for option in options:
-            if "Electronic Work Permit Information" in option.text:
+            if "Application Status" in option.text:
                 option.click()
                 break
-        time.sleep(3)  # انتظر تحميل النموذج
+        time.sleep(5)
 
-        # البحث عن حقل الإدخال (افتراضياً، قد يكون ID مختلف، جرب By.NAME أو By.XPATH)
-        # افترض أنه input[type='text'] أول أو بـ placeholder
-        inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
+        # البحث عن حقل الإدخال
+        inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='number']")
         if inputs:
-            card_input = inputs[0]  # افترض الأول هو لحقل Card Number أو Person Code
+            card_input = inputs[0]  # افتراض الأول لـ Application Number أو Labour Card
             card_input.send_keys(card_number)
-        else:
-            # إذا لم يجد، جرب XPath
-            card_input = driver.find_element(By.XPATH, "//input[contains(@id, 'txt') or contains(@placeholder, 'Card') or contains(@placeholder, 'Person')]")
-            card_input.send_keys(card_number)
+            if len(inputs) > 1:
+                # إذا كان هناك حقل ثاني، ربما لشيء آخر، لكن تجاهل
+                pass
 
         # حل الكابتشا
         captcha_script = """
@@ -144,26 +147,26 @@ def deep_search(card_number):
         })();
         """
         driver.execute_script(captcha_script)
-        time.sleep(2)
+        time.sleep(3)
 
         # الضغط على زر البحث
-        submit_buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button[id*='btn'], button[class*='btn']")
+        submit_buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button[id*='btn'], button[class*='btn'], button[contains(text(), 'Search')]")
         if submit_buttons:
             submit_buttons[0].click()
-        time.sleep(8)
+        time.sleep(10)
 
         # استخراج البيانات
         def get_deep_value(label):
             try:
-                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div | //td[contains(text(), '{label}')]/following-sibling::td"
+                xpath = f"//*[contains(text(), '{label}')]/following-sibling::*[1] | //*[contains(text(), '{label}')]/parent::*/following-sibling::*[1] | //td[contains(text(), '{label}')]/following-sibling::td[1]"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else 'Not Found'
             except: return 'Not Found'
 
-        company_name = get_deep_value("Company Name") or get_deep_value("Establishment Name")
-        company_code = get_deep_value("Company Code") or get_deep_value("Establishment No")
-        client_name = get_deep_value("Worker Name") or get_deep_value("Person Name")
-        occupation = get_deep_value("Occupation") or get_deep_value("Job Title")
+        company_name = get_deep_value("Company Name") or get_deep_value("Establishment Name") or get_deep_value("Company")
+        company_code = get_deep_value("Company Code") or get_deep_value("Establishment No") or get_deep_value("Company No")
+        client_name = get_deep_value("Worker Name") or get_deep_value("Person Name") or get_deep_value("Employee Name")
+        occupation = get_deep_value("Occupation") or get_deep_value("Job Title") or get_deep_value("Profession")
 
         if all(v == 'Not Found' for v in [company_name, company_code, client_name, occupation]):
             return None
@@ -323,7 +326,6 @@ with tab2:
                             for key, value in deep_res.items():
                                 st.session_state.batch_results[idx][key] = value
                         else:
-                            # إذا لم يتم العثور، يمكن ترك N/A أو إضافة رسالة
                             pass
                         deep_progress_bar.progress((j + 1) / len(found_indices))
                         # تحديث الجدول أول بأول
