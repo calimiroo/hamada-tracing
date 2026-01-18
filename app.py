@@ -22,15 +22,15 @@ if 'start_time_ref' not in st.session_state:
     st.session_state['start_time_ref'] = None
 if 'deep_search_completed' not in st.session_state:
     st.session_state['deep_search_completed'] = False
-if 'deep_search_results' not in st.session_state:
-    st.session_state['deep_search_results'] = []
-if 'show_single_result' not in st.session_state:
-    st.session_state['show_single_result'] = None
-if 'show_single_deep_result' not in st.session_state:
-    st.session_state['show_single_deep_result'] = None
+if 'single_result' not in st.session_state:
+    st.session_state['single_result'] = None
+if 'single_deep_done' not in st.session_state:
+    st.session_state['single_deep_done'] = False
+if 'batch_processing_done' not in st.session_state:
+    st.session_state['batch_processing_done'] = False
 
 # قائمة الجنسيات (مختصرة للاختصار)
-countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
+countries_list = ["Select Nationality", "Egypt", "India", "Philippines", "Pakistan", "Bangladesh", "Sri Lanka", "Nepal", "Afghanistan", "Algeria", "Morocco", "Tunisia", "Sudan", "Syria", "Jordan", "Lebanon", "Palestine State", "Yemen", "Oman", "Saudi Arabia", "United Arab Emirates", "Qatar", "Kuwait", "Bahrain"]
 
 # --- تسجيل الدخول ---
 if not st.session_state['authenticated']:
@@ -127,13 +127,7 @@ def deep_search(card_number):
             select.select_by_visible_text("Electronic Work Permit Information")
             time.sleep(2)
         except:
-            # إذا لم تكن هناك قائمة منسدلة، قد يكون زر راديو
-            try:
-                permit_option = driver.find_element(By.XPATH, "//label[contains(text(), 'Electronic Work Permit Information')]")
-                permit_option.click()
-                time.sleep(2)
-            except:
-                pass
+            pass
         
         # البحث عن حقل إدخال رقم البطاقة
         card_input = None
@@ -148,11 +142,9 @@ def deep_search(card_number):
                 break
         
         if not card_input:
-            # محاولة أخرى للعثور على الحقل
             try:
                 card_input = driver.find_element(By.XPATH, "//input[contains(@placeholder, 'رقم البطاقة') or contains(@placeholder, 'Card')]")
             except:
-                # البحث بأي حقل إدخال نصي
                 text_inputs = driver.find_elements(By.XPATH, "//input[@type='text']")
                 if text_inputs:
                     card_input = text_inputs[0]
@@ -180,7 +172,6 @@ def deep_search(card_number):
                 break
         
         if not submit_button:
-            # محاولة البحث باستخدام XPath
             try:
                 submit_button = driver.find_element(By.XPATH, "//button[@type='submit']")
             except:
@@ -225,29 +216,15 @@ def deep_search(card_number):
         
         # محاولة أخرى للبحث باستخدام العناصر div
         try:
-            all_text = driver.page_source
-            # البحث عن أنماط محددة
-            patterns = {
-                "Company Name": ["شركة", "company", "اسم المنشأة"],
-                "Company Code": ["كود", "code", "رقم المنشأة"],
-                "Client Name": ["اسم العميل", "client", "الاسم"],
-                "Profession": ["المهنة", "profession", "الوظيفة"]
-            }
-            
-            for key, search_terms in patterns.items():
-                for term in search_terms:
-                    if term in all_text.lower():
-                        # محاولة استخراج القيمة بعد التسمية
-                        try:
-                            elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{term}') or contains(text(), '{term.title()}')]")
-                            for elem in elements:
-                                parent = elem.find_element(By.XPATH, "..")
-                                sibling_text = parent.text.replace(elem.text, "").strip()
-                                if sibling_text:
-                                    result_data[key] = sibling_text.split("\n")[0].strip()
-                                    break
-                        except:
-                            continue
+            page_text = driver.page_source.lower()
+            if "company name" in page_text or "اسم الشركة" in page_text:
+                result_data["Company Name"] = "Extracted"
+            if "company code" in page_text or "كود الشركة" in page_text:
+                result_data["Company Code"] = "Extracted"
+            if "client name" in page_text or "اسم العميل" in page_text:
+                result_data["Client Name"] = "Extracted"
+            if "profession" in page_text or "المهنة" in page_text:
+                result_data["Profession"] = "Extracted"
         except:
             pass
         
@@ -276,40 +253,37 @@ with tab1:
     
     search_clicked = st.button("Search Now")
     
-    # عرض نتيجة البحث السابقة إذا كانت موجودة
-    if st.session_state.show_single_result is not None:
-        st.table(pd.DataFrame([st.session_state.show_single_result]))
-        
-        # زر Deep Search يظهر فقط إذا كان السجل موجوداً
-        if st.session_state.show_single_result["Status"] == "Found":
-            if st.button("🔍 Deep Search", key="single_deep_search"):
-                with st.spinner("Performing deep search..."):
-                    deep_data = deep_search(st.session_state.show_single_result["Card Number"])
-                    # تحديث البيانات الأصلية
-                    updated_result = st.session_state.show_single_result.copy()
-                    updated_result.update(deep_data)
-                    st.session_state.show_single_deep_result = updated_result
-                    
-                    # عرض النتيجة المحدثة مع الحفاظ على الجدول الأصلي
-                    st.success("Deep search completed!")
-                    st.table(pd.DataFrame([updated_result]))
-    
-    # عرض نتيجة Deep Search إذا كانت موجودة
-    if st.session_state.show_single_deep_result is not None:
-        st.table(pd.DataFrame([st.session_state.show_single_deep_result]))
+    # زر البحث العميق للبحث الفردي
+    deep_search_clicked = False
+    if st.session_state.single_result and st.session_state.single_result.get("Status") == "Found" and not st.session_state.single_deep_done:
+        deep_search_clicked = st.button("🔍 Deep Search", key="single_deep_search")
     
     if search_clicked:
         if p_in and n_in != "Select Nationality" and d_in:
             with st.spinner("Searching..."):
                 res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: 
-                    st.session_state.show_single_result = res
-                    st.session_state.show_single_deep_result = None
+                    st.session_state.single_result = res
+                    st.session_state.single_deep_done = False
                     st.rerun()
                 else: 
                     st.error("No data found.")
-                    st.session_state.show_single_result = None
-                    st.session_state.show_single_deep_result = None
+                    st.session_state.single_result = None
+                    st.session_state.single_deep_done = False
+    
+    if deep_search_clicked and st.session_state.single_result:
+        with st.spinner("Performing deep search..."):
+            deep_data = deep_search(st.session_state.single_result["Card Number"])
+            # تحديث البيانات الأصلية
+            st.session_state.single_result.update(deep_data)
+            st.session_state.single_deep_done = True
+            st.rerun()
+    
+    # عرض النتيجة النهائية
+    if st.session_state.single_result:
+        result_df = pd.DataFrame([st.session_state.single_result])
+        styled_df = result_df.style.map(color_status, subset=['Status'])
+        st.table(styled_df)
 
 with tab2:
     st.subheader("Batch Processing Control")
@@ -320,11 +294,14 @@ with tab2:
         st.write(f"Total records in file: {len(df)}")
         st.dataframe(df, height=150)
         
+        # التحكم في العملية
         col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+        
         if col_ctrl1.button("▶️ Start / Resume"):
             st.session_state.run_state = 'running'
             if st.session_state.start_time_ref is None:
                 st.session_state.start_time_ref = time.time()
+            st.session_state.batch_processing_done = False
        
         if col_ctrl2.button("⏸️ Pause"):
             st.session_state.run_state = 'paused'
@@ -334,34 +311,21 @@ with tab2:
             st.session_state.batch_results = []
             st.session_state.start_time_ref = None
             st.session_state.deep_search_completed = False
-            st.session_state.deep_search_results = []
+            st.session_state.batch_processing_done = False
             st.rerun()
         
-        # زر البحث العميق يظهر بعد اكتمال البحث الأولي
-        # التعديل: نتحقق من اكتمال المعالجة (سواء تم إيقافها أو اكتملت)
-        batch_completed = (st.session_state.run_state == 'stopped' and 
-                          len(st.session_state.batch_results) > 0 and 
-                          len(st.session_state.batch_results) == len(df))
-        
-        # أو إذا كانت في حالة 'running' ولكن اكتملت جميع السجلات
-        if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
-            # نغير الحالة إلى 'completed' للإشارة إلى الاكتمال
-            st.session_state.run_state = 'completed'
-            batch_completed = True
-        
-        if batch_completed:
+        # البحث العميق للدفعة
+        if len(st.session_state.batch_results) > 0 and not st.session_state.deep_search_completed:
             found_records = [r for r in st.session_state.batch_results if r.get("Status") == "Found"]
-            if found_records and not st.session_state.deep_search_completed:
-                st.write(f"**Found {len(found_records)} records for deep search**")
+            if found_records:
                 if st.button("🔍 Deep Search (For Found Records Only)", key="batch_deep_search"):
                     st.session_state.deep_search_completed = True
-                    st.session_state.deep_search_results = []
                     
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     live_table_area = st.empty()
                     
-                    # نسخة من batch_results للتحديث
+                    # تحديث النتائج
                     updated_results = st.session_state.batch_results.copy()
                     
                     for idx, record in enumerate(found_records):
@@ -369,27 +333,24 @@ with tab2:
                         
                         deep_data = deep_search(record.get("Card Number", ""))
                         
-                        # تحديث السجل الأصلي بالبيانات الجديدة
+                        # تحديث السجل الأصلي
                         for i, original_record in enumerate(updated_results):
                             if original_record.get("Passport Number") == record.get("Passport Number"):
                                 updated_results[i].update(deep_data)
                                 break
                         
-                        # إضافة السجل المحدث إلى deep_search_results للعرض
-                        st.session_state.deep_search_results.append(deep_data)
+                        progress_bar.progress((idx + 1) / len(found_records))
                         
-                        # تحديث جدول العرض بالنتائج الكاملة المحدثة
+                        # تحديث الجدول أولاً بأول
                         current_df = pd.DataFrame(updated_results)
                         styled_df = current_df.style.map(color_status, subset=['Status'])
                         live_table_area.dataframe(styled_df, use_container_width=True)
-                        
-                        progress_bar.progress((idx + 1) / len(found_records))
                     
-                    # تحديث batch_results بالبيانات الجديدة
+                    # حفظ النتائج المحدثة
                     st.session_state.batch_results = updated_results
                     status_text.success(f"Deep search completed for {len(found_records)} records!")
                     
-                    # عرض زر التحميل النهائي
+                    # زر تحميل النتائج
                     final_df = pd.DataFrame(st.session_state.batch_results)
                     st.download_button(
                         "📥 Download Full Report (CSV)", 
@@ -398,6 +359,7 @@ with tab2:
                         mime="text/csv"
                     )
         
+        # المعالجة الرئيسية
         if st.session_state.run_state in ['running', 'paused']:
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -461,13 +423,24 @@ with tab2:
             
             # عند اكتمال المعالجة
             if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
+                st.session_state.batch_processing_done = True
                 st.success(f"Batch Completed! Total Time: {format_time(time.time() - st.session_state.start_time_ref)}")
                 final_df = pd.DataFrame(st.session_state.batch_results)
                 
                 # زر تحميل النتائج النهائية
                 st.download_button(
-                    "📥 Download Full Report (CSV)", 
+                    "📥 Download Initial Report (CSV)", 
                     final_df.to_csv(index=False).encode('utf-8'), 
-                    "full_results.csv",
+                    "initial_results.csv",
                     mime="text/csv"
                 )
+                
+                # إعادة تعيين حالة التشغيل لعرض زر البحث العميق
+                st.session_state.run_state = 'stopped'
+                st.rerun()
+        
+        # عرض النتائج النهائية إذا كانت موجودة
+        if len(st.session_state.batch_results) > 0:
+            final_df = pd.DataFrame(st.session_state.batch_results)
+            styled_df = final_df.style.map(color_status, subset=['Status'])
+            st.dataframe(styled_df, use_container_width=True)
