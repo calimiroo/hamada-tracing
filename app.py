@@ -4,11 +4,8 @@ import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime, timedelta
 from deep_translator import GoogleTranslator
-import re
 
 # --- إعداد الصفحة ---
 st.set_page_config(page_title="MOHRE Portal", layout="wide")
@@ -27,8 +24,12 @@ if 'deep_search_completed' not in st.session_state:
     st.session_state['deep_search_completed'] = False
 if 'deep_search_results' not in st.session_state:
     st.session_state['deep_search_results'] = []
+if 'show_single_result' not in st.session_state:
+    st.session_state['show_single_result'] = None
+if 'show_single_deep_result' not in st.session_state:
+    st.session_state['show_single_deep_result'] = None
 
-# قائمة الجنسيات
+# قائمة الجنسيات (مختصرة للاختصار)
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
 
 # --- تسجيل الدخول ---
@@ -272,29 +273,48 @@ with tab1:
     p_in = c1.text_input("Passport Number", key="s_p")
     n_in = c2.selectbox("Nationality", countries_list, key="s_n")
     d_in = c3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="s_d")
-   
-    if st.button("Search Now"):
+    
+    search_clicked = st.button("Search Now")
+    
+    # عرض نتيجة البحث السابقة إذا كانت موجودة
+    if st.session_state.show_single_result is not None:
+        st.table(pd.DataFrame([st.session_state.show_single_result]))
+        
+        # زر Deep Search يظهر فقط إذا كان السجل موجوداً
+        if st.session_state.show_single_result["Status"] == "Found":
+            if st.button("🔍 Deep Search", key="single_deep_search"):
+                with st.spinner("Performing deep search..."):
+                    deep_data = deep_search(st.session_state.show_single_result["Card Number"])
+                    # تحديث البيانات الأصلية
+                    updated_result = st.session_state.show_single_result.copy()
+                    updated_result.update(deep_data)
+                    st.session_state.show_single_deep_result = updated_result
+                    
+                    # عرض النتيجة المحدثة مع الحفاظ على الجدول الأصلي
+                    st.success("Deep search completed!")
+                    st.table(pd.DataFrame([updated_result]))
+    
+    # عرض نتيجة Deep Search إذا كانت موجودة
+    if st.session_state.show_single_deep_result is not None:
+        st.table(pd.DataFrame([st.session_state.show_single_deep_result]))
+    
+    if search_clicked:
         if p_in and n_in != "Select Nationality" and d_in:
             with st.spinner("Searching..."):
                 res = extract_data(p_in, n_in, d_in.strftime("%d/%m/%Y"))
                 if res: 
-                    st.table(pd.DataFrame([res]))
-                    # زر البحث العميق يظهر فقط إذا كان السجل موجوداً
-                    if res["Status"] == "Found":
-                        if st.button("🔍 Deep Search", key="single_deep_search"):
-                            with st.spinner("Performing deep search..."):
-                                deep_data = deep_search(res["Card Number"])
-                                # تحديث البيانات الأصلية
-                                res.update(deep_data)
-                                st.success("Deep search completed!")
-                                st.table(pd.DataFrame([res]))
+                    st.session_state.show_single_result = res
+                    st.session_state.show_single_deep_result = None
+                    st.rerun()
                 else: 
                     st.error("No data found.")
+                    st.session_state.show_single_result = None
+                    st.session_state.show_single_deep_result = None
 
 with tab2:
     st.subheader("Batch Processing Control")
     uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
-   
+    
     if uploaded_file:
         df = pd.read_excel(uploaded_file)
         st.write(f"Total records in file: {len(df)}")
@@ -318,9 +338,21 @@ with tab2:
             st.rerun()
         
         # زر البحث العميق يظهر بعد اكتمال البحث الأولي
-        if st.session_state.run_state == 'stopped' and len(st.session_state.batch_results) == len(df) and len(st.session_state.batch_results) > 0:
+        # التعديل: نتحقق من اكتمال المعالجة (سواء تم إيقافها أو اكتملت)
+        batch_completed = (st.session_state.run_state == 'stopped' and 
+                          len(st.session_state.batch_results) > 0 and 
+                          len(st.session_state.batch_results) == len(df))
+        
+        # أو إذا كانت في حالة 'running' ولكن اكتملت جميع السجلات
+        if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
+            # نغير الحالة إلى 'completed' للإشارة إلى الاكتمال
+            st.session_state.run_state = 'completed'
+            batch_completed = True
+        
+        if batch_completed:
             found_records = [r for r in st.session_state.batch_results if r.get("Status") == "Found"]
             if found_records and not st.session_state.deep_search_completed:
+                st.write(f"**Found {len(found_records)} records for deep search**")
                 if st.button("🔍 Deep Search (For Found Records Only)", key="batch_deep_search"):
                     st.session_state.deep_search_completed = True
                     st.session_state.deep_search_results = []
@@ -329,30 +361,42 @@ with tab2:
                     status_text = st.empty()
                     live_table_area = st.empty()
                     
+                    # نسخة من batch_results للتحديث
+                    updated_results = st.session_state.batch_results.copy()
+                    
                     for idx, record in enumerate(found_records):
                         status_text.info(f"Deep searching {idx+1}/{len(found_records)}: Card {record.get('Card Number', 'N/A')}")
                         
                         deep_data = deep_search(record.get("Card Number", ""))
-                        # تحديث السجل الأصلي بالبيانات الجديدة
-                        updated_record = record.copy()
-                        updated_record.update(deep_data)
-                        st.session_state.deep_search_results.append(updated_record)
                         
-                        # تحديث جدول العرض
-                        current_df = pd.DataFrame(st.session_state.deep_search_results)
+                        # تحديث السجل الأصلي بالبيانات الجديدة
+                        for i, original_record in enumerate(updated_results):
+                            if original_record.get("Passport Number") == record.get("Passport Number"):
+                                updated_results[i].update(deep_data)
+                                break
+                        
+                        # إضافة السجل المحدث إلى deep_search_results للعرض
+                        st.session_state.deep_search_results.append(deep_data)
+                        
+                        # تحديث جدول العرض بالنتائج الكاملة المحدثة
+                        current_df = pd.DataFrame(updated_results)
                         styled_df = current_df.style.map(color_status, subset=['Status'])
                         live_table_area.dataframe(styled_df, use_container_width=True)
                         
                         progress_bar.progress((idx + 1) / len(found_records))
                     
+                    # تحديث batch_results بالبيانات الجديدة
+                    st.session_state.batch_results = updated_results
                     status_text.success(f"Deep search completed for {len(found_records)} records!")
                     
-                    # تحديث batch_results بالبيانات الجديدة
-                    for deep_record in st.session_state.deep_search_results:
-                        for i, original_record in enumerate(st.session_state.batch_results):
-                            if original_record.get("Passport Number") == deep_record.get("Passport Number"):
-                                st.session_state.batch_results[i] = deep_record
-                                break
+                    # عرض زر التحميل النهائي
+                    final_df = pd.DataFrame(st.session_state.batch_results)
+                    st.download_button(
+                        "📥 Download Full Report (CSV)", 
+                        final_df.to_csv(index=False).encode('utf-8'), 
+                        "full_results_with_deep_search.csv",
+                        mime="text/csv"
+                    )
         
         if st.session_state.run_state in ['running', 'paused']:
             progress_bar = st.progress(0)
@@ -375,10 +419,14 @@ with tab2:
                     if st.session_state.batch_results[i].get("Status") == "Found":
                         actual_success += 1
                     continue
+                    
                 p_num = str(row.get('Passport Number', '')).strip()
                 nat = str(row.get('Nationality', 'Egypt')).strip()
-                try: dob = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
-                except: dob = str(row.get('Date of Birth', ''))
+                try: 
+                    dob = pd.to_datetime(row.get('Date of Birth')).strftime('%d/%m/%Y')
+                except: 
+                    dob = str(row.get('Date of Birth', ''))
+                    
                 status_text.info(f"Processing {i+1}/{len(df)}: {p_num}")
                 res = extract_data(p_num, nat, dob)
                
@@ -396,9 +444,13 @@ with tab2:
                         "Client Name": "N/A",
                         "Profession": "N/A"
                     })
-                # حساب الوقت الكلي بصيغة ساعات:دقائق:ثواني
-                elapsed_seconds = time.time() - st.session_state.start_time_ref
-                time_str = format_time(elapsed_seconds)
+                
+                # حساب الوقت الكلي
+                if st.session_state.start_time_ref:
+                    elapsed_seconds = time.time() - st.session_state.start_time_ref
+                    time_str = format_time(elapsed_seconds)
+                else:
+                    time_str = "0:00:00"
                
                 progress_bar.progress((i + 1) / len(df))
                 stats_area.markdown(f"✅ **Actual Success (Found):** {actual_success} | ⏱️ **Total Time:** {time_str}")
@@ -407,6 +459,7 @@ with tab2:
                 styled_df = current_df.style.map(color_status, subset=['Status'])
                 live_table_area.dataframe(styled_df, use_container_width=True)
             
+            # عند اكتمال المعالجة
             if st.session_state.run_state == 'running' and len(st.session_state.batch_results) == len(df):
                 st.success(f"Batch Completed! Total Time: {format_time(time.time() - st.session_state.start_time_ref)}")
                 final_df = pd.DataFrame(st.session_state.batch_results)
