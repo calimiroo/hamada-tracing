@@ -9,10 +9,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 from deep_translator import GoogleTranslator
 import re
+import os
 
 # --- إعداد الصفحة ---
-st.set_page_config(page_title="MOHRE Debugger", layout="wide")
-st.title("HAMADA TRACING - VISUAL DEBUG MODE")
+st.set_page_config(page_title="MOHRE Tracer", layout="wide")
+st.title("HAMADA TRACING - CLOUD MODE")
 
 # --- إدارة جلسة العمل ---
 if 'authenticated' not in st.session_state:
@@ -25,8 +26,6 @@ if 'single_result' not in st.session_state:
     st.session_state.single_result = None
 if 'show_deep_button' not in st.session_state:
     st.session_state.show_deep_button = False
-if 'deep_completed' not in st.session_state:
-    st.session_state.deep_completed = False
 
 # قائمة الجنسيات
 countries_list = ["Select Nationality", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czechia (Czech Republic)", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Holy See", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine State", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"]
@@ -44,16 +43,24 @@ if not st.session_state.authenticated:
                 st.error("Incorrect Password.")
     st.stop()
 
-# --- وظيفة إعداد المتصفح (تعديل لتشغيل الواجهة الرسومية) ---
+# --- وظيفة المتصفح المصححة للكلاود ---
 def get_driver():
     options = uc.ChromeOptions()
-    # تم إزالة headless لكي ترى المتصفح
-    options.add_argument("--start-maximized") # تكبير النافذة لرؤية العناصر بوضوح
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+    # أهم الإعدادات لتشغيل الكود على السيرفرات
+    options.add_argument("--headless=new")  # وضع التخفي الجديد والأكثر ثباتاً
+    options.add_argument("--no-sandbox")   # ضروري جداً لبيئة اللينكس
+    options.add_argument("--disable-dev-shm-usage") # يمنع استهلاك الذاكرة العشوائية بشكل خاطئ
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
     
-    # headless=False هو المفتاح هنا
-    driver = uc.Chrome(options=options, headless=False, use_subprocess=True)
+    # محاولة التشغيل مع معالجة الأخطاء
+    try:
+        driver = uc.Chrome(options=options, headless=True, use_subprocess=True, version_main=None)
+    except Exception as e:
+        # محاولة احتياطية في حالة فشل النسخة التلقائية
+        st.warning("Retrying driver initialization...")
+        driver = uc.Chrome(options=options, headless=True)
+        
     return driver
 
 def color_status(val):
@@ -68,10 +75,9 @@ def extract_data(passport, nationality, dob_str):
     try:
         driver = get_driver()
         driver.get("https://mobile.mohre.gov.ae/Mob_Mol/MolWeb/MyContract.aspx?Service_Code=1005&lang=en")
-        time.sleep(3) # وقت لكي ترى الصفحة تحمل
         
         # إدخال رقم الجواز
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "txtPassportNumber"))).send_keys(passport)
         
         # اختيار الجنسية
         driver.find_element(By.ID, "CtrlNationality_txtDescription").click()
@@ -93,8 +99,13 @@ def extract_data(passport, nationality, dob_str):
         # النقر على زر البحث
         driver.find_element(By.ID, "btnSubmit").click()
         
-        # زيادة وقت الانتظار لكي ترى النتائج بنفسك
-        time.sleep(6)
+        # انتظار النتائج
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Card Number')]"))
+            )
+        except:
+            return None # لم يتم العثور على نتائج
         
         # استخراج البيانات
         def get_value(label):
@@ -134,7 +145,8 @@ def extract_data(passport, nationality, dob_str):
             "Profession": ""
         }
     except Exception as e:
-        st.error(f"Basic Search Error: {str(e)}")
+        # تسجيل الخطأ في الكونسول فقط لتجنب إرباك المستخدم
+        print(f"Basic Search Error: {str(e)}")
         return None
     finally:
         if driver:
@@ -143,7 +155,7 @@ def extract_data(passport, nationality, dob_str):
             except:
                 pass
 
-# --- البحث العميق (Deep Search) - هنا سترى المشكلة بوضوح ---
+# --- البحث العميق (Deep Search) ---
 def deep_search(card_number):
     driver = None
     result_data = {
@@ -157,17 +169,15 @@ def deep_search(card_number):
         driver = get_driver()
         driver.get("https://inquiry.mohre.gov.ae/")
         
-        wait = WebDriverWait(driver, 20) # زيادة وقت الانتظار
+        wait = WebDriverWait(driver, 20)
         
         # 1. اختيار Electronic Work Permit Information
-        time.sleep(2) # راقب هنا هل سيختار القائمة؟
         try:
             select_element = wait.until(EC.presence_of_element_located((By.TAG_NAME, "select")))
             select = Select(select_element)
             select.select_by_visible_text("Electronic Work Permit Information")
             time.sleep(1)
-        except Exception as e:
-            # محاولة جافا سكريبت إذا فشل الاختيار العادي
+        except:
             driver.execute_script("""
                 var options = document.querySelectorAll('option');
                 for(var i=0; i<options.length; i++) {
@@ -179,12 +189,11 @@ def deep_search(card_number):
                 }
             """)
         
-        time.sleep(3) # راقب ظهور حقل رقم البطاقة
+        time.sleep(2)
 
         # 2. إدخال رقم البطاقة
         card_input = None
         try:
-            # محاولة العثور على حقل الإدخال بعدة طرق
             card_input = driver.find_element(By.XPATH, "//input[@id='CardNo' or contains(@placeholder, 'Card') or contains(@placeholder, 'بطاقة')]")
         except:
             inputs = driver.find_elements(By.TAG_NAME, "input")
@@ -196,13 +205,10 @@ def deep_search(card_number):
         if card_input:
             card_input.clear()
             card_input.send_keys(card_number)
-            time.sleep(1) # تأكد من كتابة الرقم
         else:
-            st.error("لم يتم العثور على حقل رقم البطاقة")
             return result_data
 
         # 3. فك الكابتشا
-        # الشفرة الخاصة بك
         captcha_script = """
         (function(){
             try{
@@ -221,7 +227,7 @@ def deep_search(card_number):
         })();
         """
         driver.execute_script(captcha_script)
-        time.sleep(4) # وقت كافي لتتأكد من أن الكابتشا كتبت
+        time.sleep(2)
 
         # 4. الضغط على زر البحث
         try:
@@ -230,7 +236,7 @@ def deep_search(card_number):
         except:
             driver.execute_script("document.forms[0].submit()")
             
-        time.sleep(6) # وقت كافي لرؤية النتائج
+        time.sleep(4)
 
         # 5. استخراج البيانات
         page_source = driver.page_source
@@ -269,179 +275,4 @@ def deep_search(card_number):
         if result_data["Profession"] == "Not Found": result_data["Profession"] = extract_by_pattern(profession_patterns, page_source)
             
     except Exception as e:
-        st.error(f"Deep Search Error: {e}")
-    finally:
-        if driver:
-            try:
-                driver.quit()
-            except:
-                pass
-    
-    return result_data
-
-# --- الواجهة الرئيسية ---
-tab1, tab2 = st.tabs(["Single Search", "Upload Excel File"])
-
-# === Tab 1: Single Search ===
-with tab1:
-    st.subheader("Single Person Search")
-    
-    col1, col2, col3 = st.columns(3)
-    passport = col1.text_input("Passport Number", key="single_passport")
-    nationality = col2.selectbox("Nationality", countries_list, key="single_nationality")
-    dob = col3.date_input("Date of Birth", value=None, min_value=datetime(1900,1,1), key="single_dob")
-    
-    search_col, deep_col = st.columns(2)
-    
-    with search_col:
-        if st.button("Search Now", type="primary", key="single_search"):
-            if passport and nationality != "Select Nationality" and dob:
-                with st.spinner("Searching... Check popup window"):
-                    result = extract_data(passport, nationality, dob.strftime("%d/%m/%Y"))
-                    if result:
-                        st.session_state.single_result = result
-                        st.session_state.show_deep_button = True
-                        st.success("Search completed!")
-                    else:
-                        st.error("No data found")
-                        st.session_state.single_result = None
-            else:
-                st.error("Please fill all fields")
-    
-    if st.session_state.single_result:
-        df_result = pd.DataFrame([st.session_state.single_result])
-        styled_df = df_result.style.map(color_status, subset=['Status'])
-        st.table(styled_df)
-        
-        if st.session_state.show_deep_button and st.session_state.single_result.get("Status") == "Found":
-            with deep_col:
-                if st.button("🔍 Deep Search", type="secondary", key="single_deep"):
-                    card_number = st.session_state.single_result.get("Card Number")
-                    if card_number and card_number != "N/A":
-                        with st.spinner(f"Opening browser for Card: {card_number}..."):
-                            deep_data = deep_search(card_number)
-                            st.session_state.single_result.update(deep_data)
-                            st.session_state.show_deep_button = False
-                            st.rerun()
-                    else:
-                        st.error("No Card Number found.")
-
-# === Tab 2: Batch Processing ===
-with tab2:
-    st.subheader("Batch Processing Control")
-    uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
-    
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        st.write(f"Total records: {len(df)}")
-        st.dataframe(df.head(), height=150)
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("▶️ Start Processing", type="primary", key="batch_start"):
-                st.session_state.run_state = 'running'
-                st.session_state.batch_results = []
-                st.rerun()
-        
-        with col2:
-            if st.button("⏸️ Pause", key="batch_pause"):
-                st.session_state.run_state = 'paused'
-                st.rerun()
-        
-        with col3:
-            if st.button("⏹️ Stop & Reset", key="batch_reset"):
-                st.session_state.run_state = 'stopped'
-                st.session_state.batch_results = []
-                st.session_state.deep_completed = False
-                st.rerun()
-        
-        results_area = st.empty()
-        status_text = st.empty()
-        progress_bar = st.progress(0)
-        
-        if st.session_state.run_state == 'running':
-            if st.session_state.batch_results:
-                current_df = pd.DataFrame(st.session_state.batch_results)
-                results_area.dataframe(current_df.style.map(color_status, subset=['Status']), height=400)
-
-            for i, row in df.iterrows():
-                if st.session_state.run_state != 'running': break
-                if i < len(st.session_state.batch_results): continue
-                
-                passport = str(row.get('Passport Number', '')).strip()
-                nationality = str(row.get('Nationality', '')).strip()
-                dob_raw = row.get('Date of Birth')
-                
-                try:
-                    if isinstance(dob_raw, str): dob_formatted = dob_raw
-                    else: dob_formatted = pd.to_datetime(dob_raw).strftime('%d/%m/%Y')
-                except: dob_formatted = str(dob_raw)
-                
-                status_text.info(f"Processing {i+1}/{len(df)}: {passport} - Watch Browser Window")
-                
-                res = extract_data(passport, nationality, dob_formatted)
-                
-                if not res:
-                    res = {
-                        "Passport Number": passport, "Nationality": nationality, "Date of Birth": dob_formatted,
-                        "Status": "Not Found", "Card Number": "N/A", "Job Description": "N/A",
-                        "Card Issue": "N/A", "Card Expiry": "N/A", "Basic Salary": "N/A", "Total Salary": "N/A",
-                        "Company Name": "", "Company Code": "", "Client Name": "", "Profession": ""
-                    }
-                
-                st.session_state.batch_results.append(res)
-                current_df = pd.DataFrame(st.session_state.batch_results)
-                results_area.dataframe(current_df.style.map(color_status, subset=['Status']), height=400)
-                progress_bar.progress((i + 1) / len(df))
-                
-            if len(st.session_state.batch_results) == len(df):
-                st.session_state.run_state = 'stopped'
-                st.success("Initial Search Completed!")
-                st.session_state.show_deep_button = True
-                st.rerun()
-
-        if len(st.session_state.batch_results) > 0:
-            final_df = pd.DataFrame(st.session_state.batch_results)
-            results_area.dataframe(final_df.style.map(color_status, subset=['Status']), height=400)
-            
-            found_count = len(final_df[final_df['Status'] == 'Found'])
-            
-            if st.session_state.show_deep_button and found_count > 0:
-                st.markdown("---")
-                if st.button(f"🔍 Deep Search for {found_count} Found Records", type="primary", key="batch_deep_btn"):
-                    st.session_state.run_state = 'deep_searching'
-                    st.rerun()
-            
-            if st.session_state.run_state == 'deep_searching':
-                progress_bar.progress(0)
-                results_list = st.session_state.batch_results
-                total_found = len([x for x in results_list if x['Status'] == 'Found'])
-                processed_count = 0
-                
-                for idx, record in enumerate(results_list):
-                    if record['Status'] == 'Found' and record.get('Company Name') == "":
-                        card = record.get('Card Number')
-                        if card and card != "N/A":
-                            status_text.info(f"Deep Searching Card: {card}... Check Browser")
-                            deep_data = deep_search(card)
-                            results_list[idx].update(deep_data)
-                            st.session_state.batch_results = results_list
-                            results_area.dataframe(pd.DataFrame(results_list).style.map(color_status, subset=['Status']), height=400)
-                            processed_count += 1
-                            progress_bar.progress(processed_count / total_found)
-                
-                st.session_state.run_state = 'stopped'
-                st.session_state.deep_completed = True
-                st.session_state.show_deep_button = False
-                st.success("Deep Search Completed!")
-                st.rerun()
-
-            csv = final_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Final Results",
-                data=csv,
-                file_name="final_results_visual.csv",
-                mime="text/csv",
-                key="final_download"
-            )
+        print(f
