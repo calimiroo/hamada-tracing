@@ -46,7 +46,7 @@ def format_time(seconds):
 # --- وظائف الاستخراج والترجمة ---
 def translate_to_english(text):
     try:
-        if text and text != 'Not Found':
+        if text and text != 'Not Found' and text != 'N/A':
             return GoogleTranslator(source='auto', target='en').translate(text)
         return text
     except: return text
@@ -97,7 +97,11 @@ def extract_data(passport, nationality, dob_str):
             "Card Number": card_num, "Card Issue": get_value("Card Issue"),
             "Card Expiry": get_value("Card Expiry"),
             "Basic Salary": get_value("Basic Salary"), "Total Salary": get_value("Total Salary"),
-            "Status": "Found"
+            "Status": "Found",
+            "Company Name": "N/A",
+            "Company Code": "N/A",
+            "Client Name": "N/A",
+            "Occupation": "N/A"
         }
     except: return None
     finally: driver.quit()
@@ -117,14 +121,20 @@ def deep_search(card_number):
             if "Electronic Work Permit Information" in option.text:
                 option.click()
                 break
-        time.sleep(2)
+        time.sleep(3)  # انتظر تحميل النموذج
 
-        # افترض أن حقل البحث يظهر بعد الاختيار، أدخل رقم البطاقة
-        # يجب تعديل هذا بناءً على السورس الفعلي بعد الاختيار، لكن بناءً على الطلب، نفترض حقل لـ Card Number
-        card_input = driver.find_element(By.ID, "txtCardNumber")  # افتراضي، يجب تعديل إذا لزم
-        card_input.send_keys(card_number)
+        # البحث عن حقل الإدخال (افتراضياً، قد يكون ID مختلف، جرب By.NAME أو By.XPATH)
+        # افترض أنه input[type='text'] أول أو بـ placeholder
+        inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
+        if inputs:
+            card_input = inputs[0]  # افترض الأول هو لحقل Card Number أو Person Code
+            card_input.send_keys(card_number)
+        else:
+            # إذا لم يجد، جرب XPath
+            card_input = driver.find_element(By.XPATH, "//input[contains(@id, 'txt') or contains(@placeholder, 'Card') or contains(@placeholder, 'Person')]")
+            card_input.send_keys(card_number)
 
-        # حل الكابتشا باستخدام الشفرة JS
+        # حل الكابتشا
         captcha_script = """
         (function(){
             try{
@@ -136,31 +146,36 @@ def deep_search(card_number):
         driver.execute_script(captcha_script)
         time.sleep(2)
 
-        # الضغط على زر البحث (افتراضي، يجب تعديل)
-        submit_button = driver.find_element(By.ID, "btnSubmit")  # افتراضي
-        submit_button.click()
+        # الضغط على زر البحث
+        submit_buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button[id*='btn'], button[class*='btn']")
+        if submit_buttons:
+            submit_buttons[0].click()
         time.sleep(8)
 
-        # استخراج البيانات (افتراضي، يجب تعديل XPath بناءً على الصفحة الفعلية)
+        # استخراج البيانات
         def get_deep_value(label):
             try:
-                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div"
+                xpath = f"//span[contains(text(), '{label}')]/following::span[1] | //label[contains(text(), '{label}')]/following-sibling::div | //td[contains(text(), '{label}')]/following-sibling::td"
                 val = driver.find_element(By.XPATH, xpath).text.strip()
                 return val if val else 'Not Found'
             except: return 'Not Found'
 
-        company_name = get_deep_value("Company Name")
-        company_code = get_deep_value("Company Code")  # افتراضي، قد يكون "Establishment No" أو مشابه
-        client_name = get_deep_value("Worker Name")  # افتراضي، إسم العميل ربما Worker Name
-        occupation = get_deep_value("Occupation")
+        company_name = get_deep_value("Company Name") or get_deep_value("Establishment Name")
+        company_code = get_deep_value("Company Code") or get_deep_value("Establishment No")
+        client_name = get_deep_value("Worker Name") or get_deep_value("Person Name")
+        occupation = get_deep_value("Occupation") or get_deep_value("Job Title")
+
+        if all(v == 'Not Found' for v in [company_name, company_code, client_name, occupation]):
+            return None
 
         return {
-            "Company Name": company_name,
+            "Company Name": translate_to_english(company_name),
             "Company Code": company_code,
-            "Client Name": client_name,
-            "Occupation": occupation
+            "Client Name": translate_to_english(client_name),
+            "Occupation": translate_to_english(occupation)
         }
-    except:
+    except Exception as e:
+        st.error(f"Deep Search Error: {str(e)}")
         return None
     finally:
         driver.quit()
@@ -188,10 +203,25 @@ with tab1:
                                 deep_res = deep_search(res["Card Number"])
                                 if deep_res:
                                     for key, value in deep_res.items():
-                                        single_df[key] = value
+                                        res[key] = value
+                                    single_df = pd.DataFrame([res])
                                     st.table(single_df)
                                     st.download_button("Download Report (CSV)", single_df.to_csv(index=False).encode('utf-8'), "single_result.csv")
-                else: st.error("No data found.")
+                                else:
+                                    st.error("No deep search data found.")
+                else:
+                    not_found = {
+                        "Passport Number": p_in, "Nationality": n_in, "Date of Birth": d_in.strftime("%d/%m/%Y"),
+                        "Job Description": "N/A", "Card Number": "N/A", "Card Issue": "N/A",
+                        "Card Expiry": "N/A", "Basic Salary": "N/A", "Total Salary": "N/A",
+                        "Status": "Not Found",
+                        "Company Name": "N/A",
+                        "Company Code": "N/A",
+                        "Client Name": "N/A",
+                        "Occupation": "N/A"
+                    }
+                    st.table(pd.DataFrame([not_found]))
+                    st.error("No data found.")
 
 with tab2:
     st.subheader("Batch Processing Control")
@@ -253,7 +283,11 @@ with tab2:
                         "Passport Number": p_num, "Nationality": nat, "Date of Birth": dob,
                         "Job Description": "N/A", "Card Number": "N/A", "Card Issue": "N/A",
                         "Card Expiry": "N/A", "Basic Salary": "N/A", "Total Salary": "N/A",
-                        "Status": "Not Found"
+                        "Status": "Not Found",
+                        "Company Name": "N/A",
+                        "Company Code": "N/A",
+                        "Client Name": "N/A",
+                        "Occupation": "N/A"
                     })
                 # حساب الوقت الكلي بصيغة ساعات:دقائق:ثواني
                 elapsed_seconds = time.time() - st.session_state.start_time_ref
@@ -288,6 +322,9 @@ with tab2:
                             st.session_state.deep_search_results[card_num] = deep_res
                             for key, value in deep_res.items():
                                 st.session_state.batch_results[idx][key] = value
+                        else:
+                            # إذا لم يتم العثور، يمكن ترك N/A أو إضافة رسالة
+                            pass
                         deep_progress_bar.progress((j + 1) / len(found_indices))
                         # تحديث الجدول أول بأول
                         current_df = pd.DataFrame(st.session_state.batch_results)
@@ -297,4 +334,4 @@ with tab2:
                         st.success("Deep Search Completed!")
                         final_df = pd.DataFrame(st.session_state.batch_results)
                         st.download_button("Download Full Report (CSV)", final_df.to_csv(index=False).encode('utf-8'), "full_results.csv")
-                # أزرار التحكم في Deep Search (يمكن إضافتها إذا لزم، لكن الطلب لا يحدد وقف/إيقاف لـ Deep)
+                # أزرار التحكم في Deep Search إذا لزم (غير محدد في الطلب)
