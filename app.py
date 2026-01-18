@@ -1,4 +1,4 @@
-I understand the issue. Please copy only the code starting from `import streamlit as st` onwards, without any introductory text. Here's the clean version:
+It seems there's confusion with the file content. Please create a new file and paste only this exact code:
 
 ```python
 import streamlit as st
